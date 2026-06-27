@@ -1,8 +1,15 @@
 """LangGraph workflow that coordinates the stock research process."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
+
+from mcp_servers.news_server import get_news, get_sentiment_score
+from mcp_servers.yahoo_finance_server import (
+    get_company_info,
+    get_financials,
+    get_stock_price,
+)
 
 from .state import ResearchState
 
@@ -10,28 +17,107 @@ MAX_ITERATIONS = 3
 APPROVED = "approved"
 
 
+def _safe_tool_call(tool_func: Any, *args: Any, **kwargs: Any) -> Any | None:
+    try:
+        return tool_func(*args, **kwargs)
+    except Exception:
+        return None
+
+
 def researcher_node(state: ResearchState) -> dict:
-    """Populate placeholder research data for the requested ticker."""
+    """Populate research data for the requested ticker using local MCP-backed tools."""
     ticker = state["ticker"].upper()
     iteration = state.get("iteration", 0) + 1
 
+    market_data = {
+        "ticker": ticker,
+        "price": 100.0,
+        "currency": "USD",
+        "source": "placeholder",
+    }
+    news_sentiment = {
+        "label": "neutral",
+        "score": 0.0,
+        "source": "placeholder",
+    }
+    fundamentals = {
+        "summary": f"No fundamentals available for {ticker}.",
+        "source": "placeholder",
+    }
+
+    stock_price = _safe_tool_call(get_stock_price, ticker)
+    if stock_price is not None:
+        market_data.update(
+            {
+                "price": stock_price.current_price,
+                "currency": stock_price.currency,
+                "percentage_change": stock_price.percentage_change,
+                "source": "mcp",
+            }
+        )
+
+    company_info = _safe_tool_call(get_company_info, ticker)
+    if company_info is not None:
+        fundamentals.update(
+            {
+                "company_name": company_info.name,
+                "sector": company_info.sector,
+                "industry": company_info.industry,
+                "description": company_info.description,
+                "source": "mcp",
+            }
+        )
+
+    financials = _safe_tool_call(get_financials, ticker)
+    if financials is not None:
+        income_statement = financials.income_statement
+        balance_sheet = financials.balance_sheet
+        summary_parts = []
+        if income_statement and income_statement.total_revenue is not None:
+            summary_parts.append(
+                f"Revenue: {income_statement.total_revenue:,.0f}"
+            )
+        if income_statement and income_statement.net_income is not None:
+            summary_parts.append(
+                f"Net income: {income_statement.net_income:,.0f}"
+            )
+        if balance_sheet and balance_sheet.total_assets is not None:
+            summary_parts.append(
+                f"Assets: {balance_sheet.total_assets:,.0f}"
+            )
+
+        fundamentals.update(
+            {
+                "summary": " | ".join(summary_parts) or fundamentals["summary"],
+                "fiscal_year": financials.fiscal_year,
+                "currency": financials.currency,
+                "source": "mcp",
+            }
+        )
+
+    news_result = _safe_tool_call(get_news, ticker, 7)
+    if news_result is not None and getattr(news_result, "articles", None):
+        headlines = [article.title for article in news_result.articles[:3] if article.title]
+        fundamentals["news_headlines"] = headlines
+
+    sentiment_result = _safe_tool_call(get_sentiment_score, ticker)
+    if sentiment_result is not None:
+        news_sentiment.update(
+            {
+                "label": sentiment_result.label,
+                "score": sentiment_result.score,
+                "source": "mcp",
+                "positive_headlines": sentiment_result.positive_headlines,
+                "negative_headlines": sentiment_result.negative_headlines,
+                "neutral_headlines": sentiment_result.neutral_headlines,
+            }
+        )
+
     return {
         "ticker": ticker,
-        "market_data": {
-            "ticker": ticker,
-            "price": 100.0,
-            "currency": "USD",
-            "source": "mock",
-        },
-        "news_sentiment": {
-            "label": "neutral",
-            "score": 0.0,
-            "source": "mock",
-        },
-        "fundamentals": {
-            "summary": f"Placeholder fundamentals for {ticker}.",
-            "source": "mock",
-        },
+        "market_data": market_data,
+        "news_sentiment": news_sentiment,
+        "fundamentals": fundamentals,
         "iteration": iteration,
         "status": "research_complete",
     }
