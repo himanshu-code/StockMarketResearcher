@@ -131,12 +131,21 @@ def get_stock_price(ticker: str) -> StockPriceToolResponse:
     return _get_stock_price_impl(ticker)
 
 
+# Maximum number of OHLCV bars returned to stay within LLM token budgets.
+_MAX_OHLCV_BARS = 10
+
+
 def _get_ohlcv_impl(ticker: str, period: str) -> OHLCVToolResponse:
-    """Return OHLCV bars for the requested ticker and period."""
+    """Return the most recent OHLCV bars (up to _MAX_OHLCV_BARS) for the
+    requested ticker and period.  Capping the rows prevents 413 token-limit
+    errors when the response is serialised into the LLM context window."""
     normalized_ticker = _normalize_ticker(ticker)
     normalized_period = _validate_period(period)
     tick = Ticker(normalized_ticker)
     ohlcv_data = tick.history(period=normalized_period, auto_adjust=False)
+
+    # Keep only the most-recent rows to limit payload size.
+    ohlcv_data = ohlcv_data.tail(_MAX_OHLCV_BARS)
 
     records = []
     for timestamp, row in ohlcv_data.iterrows():
