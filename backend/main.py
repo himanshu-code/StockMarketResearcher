@@ -16,6 +16,7 @@ from schema.schemas import (
 )
 import asyncio
 
+
 settings = get_settings()
 
 app = FastAPI(title=settings.app_name)
