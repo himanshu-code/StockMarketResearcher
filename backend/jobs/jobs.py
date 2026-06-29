@@ -80,20 +80,60 @@ async def run_research_job(job_id: str):
         return
     await _update_job(job_id,status="running")
     await _append_event(job_id,"agent_started",{"job_id":job_id,"ticker":job["ticker"]})
-
+    initial_state = {
+        "ticker": job["ticker"],
+        "market_data": {},
+        "news_sentiment": {},
+        "fundamentals": {},
+        "critique": "",
+        "critique_result": {},
+        "report": "",
+        "iteration": 0,
+        "status": "queued",
+    }
     try:
-        result =await graph.ainvoke({
-            "ticker": job["ticker"],
-            "market_data":{},
-            "news_sentiment":{},
-            "fundamentals":{},
-            "critique":"",
-            "report":"",
-            "iteration":0,
-            "status":"queued"
-        })
+        accumulated=dict(initial_state)
+       
+        async for chunk in graph.astream(initial_state):
+            for node_name, node_output in chunk.items():
+                accumulated.update(node_output)
+                if node_name == "critic":
+                    critique_result = node_output.get("critique_result", {})
+                    await _append_event(
+                        job_id,
+                        "critique",
+                        {
+                            "job_id": job_id,
+                            "iteration": accumulated.get("iteration", 1),
+                            "approved": critique_result.get("approved"),
+                            "critique": critique_result.get("critique", ""),
+                            "missing": critique_result.get("missing", []),
+                        },
+                    )
+                else:
+                    await _append_event(
+                        job_id,
+                        node_name,
+                        {
+                            "job_id": job_id,
+                            "iteration": accumulated.get("iteration", 1),
+                            **node_output,
+                        },
+                    )
+            
 
-        report =result.get("report","")
+        # result =await graph.ainvoke({
+        #     "ticker": job["ticker"],
+        #     "market_data":{},
+        #     "news_sentiment":{},
+        #     "fundamentals":{},
+        #     "critique":"",
+        #     "report":"",
+        #     "iteration":0,
+        #     "status":"queued"
+        # })
+
+        report =accumulated.get("report","")
         await _update_job(job_id,status="completed",report=report,completed_at=_now())
         await _append_event(job_id,"agent_done",{"job_id":job_id,"ticker":job["ticker"]})
         await _append_event(job_id,"report_ready",{"job_id":job_id,"ticker":job["ticker"],"report":report})

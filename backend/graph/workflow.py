@@ -1,15 +1,47 @@
 """LangGraph workflow that coordinates the stock research process."""
 
 from typing import Literal
+import json
+import logging 
 
+from crewai import Crew,Process
 from langgraph.graph import END, START, StateGraph
 
 from agents.crew_manager import get_research_crew
+from agents.CriticAgent import criticAgent,build_critic_task
 from .state import ResearchState
 
 MAX_ITERATIONS = 3
 APPROVED = "approved"
 
+_FALLBACK_CRITIQUE = {
+    "approved": True,
+    "critique": "Critic evaluation failed; proceeding to report.",
+    "missing": [],
+}
+
+
+def _parse_critique_json(raw: str) -> dict:
+    """Extract and parse the JSON critique result from LLM output."""
+    text = raw.strip()
+    if "```json" in text:
+        try:
+            text = text.split("```json", 1)[1].split("```", 1)[0].strip()
+        except IndexError:
+            pass
+    elif "```" in text:
+        try:
+            text = text.split("```", 1)[1].split("```", 1)[0].strip()
+        except IndexError:
+            pass
+    try:
+        result = json.loads(text)
+        # Validate required keys
+        if "approved" in result and "critique" in result and "missing" in result:
+            return result
+    except json.JSONDecodeError as exc:
+        logging.warning("Failed to parse critique JSON: %s", exc)
+    return _FALLBACK_CRITIQUE
 
 def researcher_node(state: ResearchState) -> dict:
     """Populate research data for the requested ticker using CrewAI agents."""
@@ -30,11 +62,39 @@ def researcher_node(state: ResearchState) -> dict:
 
 
 def critic_node(state: ResearchState) -> dict[str, str]:
-    """Approve the placeholder research until a real critic is connected."""
+    """Run the critic agent to evaluate research quality"""
+    ticker =state["ticker"]
+    iteration=state["iteration"]
+
+    critic_task=build_critic_task(
+        ticker=ticker,
+        market_data=state.get("market_data",{}),
+        news_sentiment=state.get("news_sentiment",{}),
+        fundamentals=state.get("fundamentals",{}),
+        iteration=iteration
+        )
+    crew=Crew(
+        agents=[criticAgent],
+        tasks=[critic_task],
+        process=Process.sequential,
+        verbose=False,
+        memory=False
+    )
+    try:
+        crew.kickoff()
+        raw_output=critic_task.output.raw if critic_task.output else ""
+        critique_result=_parse_critique_json(raw_output)
+    except Exception as exec:
+        logging.error('CriticAgent failed for %s:%s',ticker,exec)
+        critique_result=_FALLBACK_CRITIQUE
+    status="critique_approved" if critique_result["approved"] else "critique_retry"
     return {
-        "critique": APPROVED,
-        "status": "critique_approved",
+        "critique":critique_result["critique"],
+        "critique_result":critique_result,    
+        "status":status
     }
+
+   
 
 
 def report_node(state: ResearchState) -> dict[str, str]:
@@ -93,8 +153,9 @@ def report_node(state: ResearchState) -> dict[str, str]:
 
 def route_after_critique(state: ResearchState) -> Literal["report", "retry"]:
     """Send approved research to reporting, otherwise retry up to the limit."""
-    critique = state.get("critique", "").strip().lower()
-    if critique == APPROVED or state.get("iteration", 0) >= MAX_ITERATIONS:
+    critique_result=state.get("critique_result",{})
+    approved=critique_result.get("approved",True)
+    if approved or state.get("iteration", 0) >= MAX_ITERATIONS:
         return "report"
     return "retry"
 

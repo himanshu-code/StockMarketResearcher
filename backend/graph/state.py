@@ -12,3 +12,4 @@ class ResearchState(TypedDict):
     report: str
     iteration: int
     status: str
+    critique_result: dict 
