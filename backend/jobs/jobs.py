@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime,timezone
 from typing import Any
 from uuid import uuid4
 from graph.workflow import graph
+
+logger = logging.getLogger(__name__)
 
 TERMINAL_STATUSES=["completed","failed"]
 
@@ -90,12 +93,19 @@ async def run_research_job(job_id: str):
         "report": "",
         "iteration": 0,
         "status": "queued",
+        "rag_context": [],
     }
     try:
         accumulated=dict(initial_state)
        
         async for chunk in graph.astream(initial_state):
             for node_name, node_output in chunk.items():
+                if node_output is None:
+                    logger.warning(
+                        "[job:%s] Node '%s' returned None — skipping update",
+                        job_id, node_name
+                    )
+                    continue
                 accumulated.update(node_output)
                 if node_name == "critic":
                     critique_result = node_output.get("critique_result", {})
@@ -111,16 +121,17 @@ async def run_research_job(job_id: str):
                         },
                     )
                 else:
+                    # Exclude rag_context (large list) from the event payload
+                    event_data = {k: v for k, v in node_output.items() if k != "rag_context"}
                     await _append_event(
                         job_id,
                         node_name,
                         {
                             "job_id": job_id,
                             "iteration": accumulated.get("iteration", 1),
-                            **node_output,
+                            **event_data,
                         },
                     )
-            
 
         # result =await graph.ainvoke({
         #     "ticker": job["ticker"],
@@ -138,6 +149,11 @@ async def run_research_job(job_id: str):
         await _append_event(job_id,"agent_done",{"job_id":job_id,"ticker":job["ticker"]})
         await _append_event(job_id,"report_ready",{"job_id":job_id,"ticker":job["ticker"],"report":report})
     except Exception as e:
-        error_text=str(e)
-        await _update_job(job_id,status="failed",error=error_text,completed_at=_now())
-        await _append_event(job_id,"agent_failed",{"job_id":job_id,"error":error_text})
+        import traceback
+        error_text = str(e)
+        logger.exception(
+            "[job:%s | ticker:%s] Research job FAILED — full traceback:\n%s",
+            job_id, job.get("ticker", "?"), traceback.format_exc()
+        )
+        await _update_job(job_id, status="failed", error=error_text, completed_at=_now())
+        await _append_event(job_id, "agent_failed", {"job_id": job_id, "error": error_text})

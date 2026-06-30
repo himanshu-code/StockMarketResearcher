@@ -43,13 +43,22 @@ def _parse_json_output(raw_output: str) -> dict[str, Any] | None:
         return None
 
 
-def _build_tasks() -> tuple[Task, Task, Task]:
+def _build_tasks(rag_context:list[str]) -> tuple[Task, Task, Task]:
     """Construct the three research tasks. Tasks are created fresh each call
     so that previous run outputs do not pollute subsequent runs."""
+
+    rag_preamble=""
+    if rag_context:
+        joined="\n\n---\n\n".join(rag_context)
+        rag_preamble=(
+            f"### previous analysis context (use to avoid repetition and spot contradictions):\n"
+            f"{joined}\n\n"
+        )
 
     market_data_task = Task(
         name="market_data",
         description=(
+            rag_preamble+
             "Retrieve the current stock price for {ticker} using get_stock_price. "
             "Then retrieve recent price history using get_ohlcv with period='5d' — "
             "call get_ohlcv ONCE with period='5d' only (do NOT call it again with any other period). "
@@ -113,11 +122,11 @@ class ResearchCrew:
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
 
-    def run_research(self, ticker: str) -> ResearchOutput:
+    def run_research(self, ticker: str,rag_context:list[str]|None=None) -> ResearchOutput:
         ticker = ticker.upper()
 
         # Build fresh tasks every run so output state doesn't leak.
-        market_data_task, news_sentiment_task, fundamentals_task = _build_tasks()
+        market_data_task, news_sentiment_task, fundamentals_task = _build_tasks(rag_context)
 
         crew = Crew(
             agents=[marketDataAgent, newsSentimentAgent, fundamentalsAgent],

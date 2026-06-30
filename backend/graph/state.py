@@ -13,3 +13,4 @@ class ResearchState(TypedDict):
     iteration: int
     status: str
     critique_result: dict 
+    rag_context:list[str]

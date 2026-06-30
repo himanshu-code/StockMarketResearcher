@@ -27,7 +27,11 @@ criticAgent= Agent(
     memory=False
 )
 
-def build_critic_task(ticker:str,market_data:dict,news_sentiment:dict,fundamentals:dict,iteration:int)->Task:
+def build_critic_task(ticker:str,market_data:dict,news_sentiment:dict,fundamentals:dict,iteration:int,rag_context:list[str]|None =None)->Task:
+    rag_block=""
+    if rag_context:
+        joined="\n\n--\n\n".join(rag_context)
+        rag_block=f"\n\n Previous analysis context (look for contradictions):\n{joined}"
     return Task(
         name="Critic_evalutation",
         description=(
@@ -36,7 +40,8 @@ def build_critic_task(ticker:str,market_data:dict,news_sentiment:dict,fundamenta
             f"Market data: \n{market_data}"
             f"News sentiment: \n{news_sentiment}"
             f"Fundamentals: \n{fundamentals}"
-            "check for:\n "
+            +rag_block+
+            "\ncheck for:\n "
             "  1. Missing or null critical fields (market_cap, revenue, net_income, current_price).\n"
             "  2. Conflicting signals (e.g., bullish trend but very negative sentiment score < -0.5).\n"
             "  3. Absence of top headlines (empty list).\n"
