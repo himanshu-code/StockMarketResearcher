@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from agents.crew_manager import get_research_crew
 from agents.CriticAgent import criticAgent,build_critic_task
 from .state import ResearchState
+from rag.vector_store import embed_report,retrieve_similar
 
 MAX_ITERATIONS = 3
 APPROVED = "approved"
@@ -20,6 +21,7 @@ _FALLBACK_CRITIQUE = {
     "missing": [],
 }
 
+logger=logging.getLogger(__name__)  
 
 def _parse_critique_json(raw: str) -> dict:
     """Extract and parse the JSON critique result from LLM output."""
@@ -47,9 +49,10 @@ def researcher_node(state: ResearchState) -> dict:
     """Populate research data for the requested ticker using CrewAI agents."""
     ticker = state["ticker"].upper()
     iteration = state.get("iteration", 0) + 1
+    rag_context=state.get("rag_context",[])
 
     crew = get_research_crew()
-    crew_output = crew.run_research(ticker)
+    crew_output = crew.run_research(ticker,rag_context=rag_context)
 
     return {
         "ticker": ticker,
@@ -66,12 +69,18 @@ def critic_node(state: ResearchState) -> dict[str, str]:
     ticker =state["ticker"]
     iteration=state["iteration"]
 
+    rag_context=state.get("rag_context",[])
+    if iteration>1 and not rag_context:
+        query=f"Contradictions and issues in {ticker} stock analysis"
+        rag_context=retrieve_similar(ticker=ticker,query=query,k=2)
+
     critic_task=build_critic_task(
         ticker=ticker,
         market_data=state.get("market_data",{}),
         news_sentiment=state.get("news_sentiment",{}),
         fundamentals=state.get("fundamentals",{}),
-        iteration=iteration
+        iteration=iteration,
+        rag_context=rag_context
         )
     crew=Crew(
         agents=[criticAgent],
@@ -160,14 +169,42 @@ def route_after_critique(state: ResearchState) -> Literal["report", "retry"]:
     return "retry"
 
 
+def rag_context_node(state: ResearchState) -> dict:
+    """Query ChromaDB for prior analyses and inject them into ResearchState."""
+    ticker = state["ticker"]
+    query = f"Stock research analyses for {ticker}"
+    try:
+        prior_analyses = retrieve_similar(ticker=ticker, query=query, k=3)
+    except Exception:
+        logger.exception("[RAG] rag_context_node failed for %s — falling back to empty context", ticker)
+        prior_analyses = []
+    return {"rag_context": prior_analyses}
+
+def persist_report_node(state: ResearchState) -> dict:
+    """Store the completed report in ChromaDB for future RAG retrieval."""
+    ticker = state["ticker"]
+    report = state.get("report", "")
+    if report:
+        try:
+            embed_report(report=report, ticker=ticker)
+        except Exception as exc:
+            logger.exception(
+                "[RAG] persist_report_node FAILED for %s — full traceback:", ticker
+            )
+    return {}
+    
 def build_research_graph():
     """Build and compile the research workflow."""
     workflow = StateGraph(ResearchState)
+    workflow.add_node("rag_context",rag_context_node)
     workflow.add_node("researcher", researcher_node)
     workflow.add_node("critic", critic_node)
     workflow.add_node("report", report_node)
+    workflow.add_node("persist_report",persist_report_node)
 
-    workflow.add_edge(START, "researcher")
+
+    workflow.add_edge(START, "rag_context")
+    workflow.add_edge("rag_context","researcher")
     workflow.add_edge("researcher", "critic")
     workflow.add_conditional_edges(
         "critic",
@@ -177,7 +214,8 @@ def build_research_graph():
             "retry": "researcher",
         },
     )
-    workflow.add_edge("report", END)
+    workflow.add_edge("report","persist_report")
+    workflow.add_edge("persist_report",END)
 
     return workflow.compile()
 
