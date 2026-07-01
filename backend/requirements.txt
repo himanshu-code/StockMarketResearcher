@@ -1,8 +1,11 @@
+aiosqlite
+asyncpg
 chromadb
 crewai
 fastapi[standard]
 fastmcp
 fastmcp-slim
+fpdf2
 httpcore
 huggingface_hub
 langchain
@@ -19,6 +22,7 @@ linkify-it-py
 markdown-it-py
 MarkupSafe
 mcp
+md2pdf
 mdit-py-plugins
 mdurl
 mmh3
@@ -30,7 +34,8 @@ numpy
 openai
 pandas
 pydantic
+pydantic-settings
 PyJWT
-yfinance
 sqlalchemy
-
+weasyprint
+yfinance
