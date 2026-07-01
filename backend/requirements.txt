@@ -32,4 +32,5 @@ pandas
 pydantic
 PyJWT
 yfinance
+sqlalchemy
 
