@@ -1,13 +1,15 @@
 from functools import lru_cache
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Stock Market Researcher API"
-    openai_api_key: str = ""
-    newsapi_key: str = ""
-    database_url: str = "sqlite:///./stock_market_researcher.db"
+    openai_api_key: str = os.getenv("OPENAI_API_KEY","")
+    newsapi_key: str = os.getenv("NEWSAPI_KEY","")
+    base_url:str = os.getenv("OPENAI_BASE_URL","")
+    database_url: str = os.getenv("DATABASE_URL","")
 
     model_config = SettingsConfigDict(env_file="../.env", extra="ignore")
 

@@ -18,14 +18,16 @@ class ResearchEvent(BaseModel):
     created_at:datetime 
 
 class ResearchJobResponse(BaseModel):
-    job_id:str 
-    ticker:str
-    status:str
-    report:str | None = None
-    error:str | None = None
-    created_at:datetime
-    updated_at:datetime
-    completed_at:datetime | None = None
+    job_id: str
+    ticker: str
+    status: str
+    report: str | None = None
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+    signal: str | None = None
+    confidence: float | None = None
 
 class ResearchReportItem(BaseModel):
     job_id:str
@@ -109,3 +111,15 @@ class SentimentToolResponse(BaseModel):
     positive_headlines: int | None = None
     negative_headlines: int | None = None
     neutral_headlines: int | None = None
+
+
+class ReportHistoryItem(BaseModel):
+    """Row returned by GET /reports — DB-backed, paginated."""
+    id: int
+    job_id: str
+    ticker: str
+    created_at: datetime
+    signal: str
+    confidence: float
+
+    model_config = {"from_attributes": True}  # allows ORM -> Pydantic conversion

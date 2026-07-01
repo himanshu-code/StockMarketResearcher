@@ -22,3 +22,19 @@ export async function getReports(): Promise<ResearchReportItem[]> {
   const { data } = await apiClient.get<ResearchReportItem[]>('/reports')
   return data
 }
+
+/** Export a completed research report as a PDF. */
+export async function exportReport(jobId: string, ticker: string): Promise<void> {
+  const response = await apiClient.post(`/research/${jobId}/export`, {}, {
+    responseType: 'blob',
+  })
+  const blob = new Blob([response.data], { type: 'application/pdf' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', `${ticker.toUpperCase()}_report.pdf`)
+  document.body.appendChild(link)
+  link.click()
+  link.parentNode?.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
