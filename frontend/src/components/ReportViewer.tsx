@@ -13,10 +13,12 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import SignalBadge from './SignalBadge'
+import { exportReport } from '../api/research'
 import type { SentimentLabel } from '../types/api'
 import type { ResearcherData } from '../types/api'
 
 interface ReportViewerProps {
+  jobId: string
   ticker: string
   report: string
   sentiment: SentimentLabel | null
@@ -109,8 +111,21 @@ function MarketDataRow({ marketData }: { marketData: ResearcherData['market_data
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
-export default function ReportViewer({ ticker, report, sentiment, marketData }: ReportViewerProps) {
+export default function ReportViewer({ jobId, ticker, report, sentiment, marketData }: ReportViewerProps) {
   const [tab, setTab] = useState(0)
+  const [downloading, setDownloading] = useState(false)
+
+  const handleDownload = async () => {
+    setDownloading(true)
+    try {
+      await exportReport(jobId, ticker)
+    } catch (err) {
+      console.error('Failed to export PDF:', err)
+      alert('Failed to export PDF report. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <Box className="flex flex-col gap-4">
@@ -127,20 +142,17 @@ export default function ReportViewer({ ticker, report, sentiment, marketData }: 
 
           {/* Actions */}
           <Box className="flex items-center gap-2">
-            {/* PDF Export — Placeholder: endpoint not yet implemented */}
-            <Tooltip title="PDF export coming soon — backend endpoint not yet available">
-              <span>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<DownloadIcon />}
-                  disabled
-                  sx={{ borderColor: '#2D343F', color: '#4B5563' }}
-                >
-                  Download PDF
-                </Button>
-              </span>
-            </Tooltip>
+            {/* PDF Export */}
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DownloadIcon />}
+              disabled={downloading}
+              onClick={handleDownload}
+              sx={{ borderColor: '#2D343F', color: '#BBCBB2', '&:hover': { borderColor: '#3D8BFF', color: '#3D8BFF' } }}
+            >
+              {downloading ? 'Downloading...' : 'Download PDF'}
+            </Button>
 
             <Tooltip title="Copy report link">
               <Button

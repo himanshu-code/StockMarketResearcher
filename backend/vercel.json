@@ -10,8 +10,8 @@
     ],
     "routes": [
         {
-            "src": "/api/{$path*}",
-            "dest": "/backend/main.py"
+            "src": "/(.*)",
+            "dest": "/main.py"
         }
     ]
 }

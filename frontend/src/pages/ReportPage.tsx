@@ -53,7 +53,8 @@ export default function ReportPage() {
       {/* Report viewer — show when complete */}
       {jobStatus === 'completed' && report && (
         <ReportViewer
-          ticker={jobId ?? ''}
+          jobId={jobId ?? ''}
+          ticker={ticker}
           report={report}
           sentiment={sentiment}
           marketData={marketData}

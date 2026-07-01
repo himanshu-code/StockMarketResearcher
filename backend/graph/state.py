@@ -14,3 +14,5 @@ class ResearchState(TypedDict):
     status: str
     critique_result: dict 
     rag_context:list[str]
+    signal:str
+    confidence:float
