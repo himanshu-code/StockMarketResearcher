@@ -144,10 +144,29 @@ async def run_research_job(job_id: str):
         #     "status":"queued"
         # })
 
-        report =accumulated.get("report","")
-        await _update_job(job_id,status="completed",report=report,completed_at=_now())
-        await _append_event(job_id,"agent_done",{"job_id":job_id,"ticker":job["ticker"]})
-        await _append_event(job_id,"report_ready",{"job_id":job_id,"ticker":job["ticker"],"report":report})
+        report = accumulated.get("report", "")
+        signal = accumulated.get("signal", "Neutral")
+        confidence = accumulated.get("confidence", 0.5)
+
+        # Persist to SQL DB
+        try:
+            from db.database import AsyncSessionLocal
+            from db import crud
+            async with AsyncSessionLocal() as db:
+                await crud.save_report(
+                    db,
+                    job_id=job_id,
+                    ticker=job["ticker"],
+                    markdown=report,
+                    signal=signal,
+                    confidence=confidence,
+                )
+        except Exception:
+            logger.exception("[job:%s] DB persist failed — report still delivered via SSE", job_id)
+
+        await _update_job(job_id, status="completed", report=report, signal=signal, confidence=confidence, completed_at=_now())
+        await _append_event(job_id, "agent_done", {"job_id": job_id, "ticker": job["ticker"]})
+        await _append_event(job_id, "report_ready", {"job_id": job_id, "ticker": job["ticker"], "report": report, "signal": signal, "confidence": confidence})
     except Exception as e:
         import traceback
         error_text = str(e)
