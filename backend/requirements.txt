@@ -1,6 +1,6 @@
 chromadb
 crewai
-fastapi
+fastapi[standard]
 fastmcp
 fastmcp-slim
 httpcore
