@@ -3,3 +3,7 @@ name = "stock-market-researcher"
 version = "0.1.0"
 requires-python = ">=3.12, <3.13"
 description = "Stock Market Researcher project"
+
+[tool.setuptools]
+packages = []
+py-modules = []
