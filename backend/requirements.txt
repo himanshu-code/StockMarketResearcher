@@ -18,7 +18,7 @@ langsmith
 linkify-it-py
 markdown-it-py
 MarkupSafe
-mcp=
+mcp
 mdit-py-plugins
 mdurl
 mmh3
