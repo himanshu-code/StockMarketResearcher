@@ -45,7 +45,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost",
+        "https://stock-market-researcher.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
