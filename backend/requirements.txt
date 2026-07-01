@@ -20,7 +20,7 @@ caio==0.9.25
 certifi==2026.6.17
 cffi==2.0.0
 charset-normalizer==3.4.7
-chromadb==1.5.9
+chromadb
 click==8.4.2
 colorama==0.4.6
 crewai==1.14.7
