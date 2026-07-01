@@ -3,6 +3,51 @@ name = "stock-market-researcher-backend"
 version = "0.1.0"
 requires-python = ">=3.12, <3.13"
 description = "Stock Market Researcher backend API"
+dependencies = [
+    "aiosqlite",
+    "asyncpg",
+    "chromadb",
+    "crewai",
+    "fastapi[standard]",
+    "fastapi-cli",
+    "fastmcp",
+    "fastmcp-slim",
+    "fpdf2",
+    "httpcore",
+    "huggingface_hub",
+    "langchain",
+    "langchain-chroma",
+    "langchain-core",
+    "langchain-mcp-adapters",
+    "langchain-protocol",
+    "langgraph",
+    "langgraph-checkpoint",
+    "langgraph-prebuilt",
+    "langgraph-sdk",
+    "langsmith",
+    "linkify-it-py",
+    "markdown-it-py",
+    "MarkupSafe",
+    "mcp",
+    "md2pdf",
+    "mdit-py-plugins",
+    "mdurl",
+    "mmh3",
+    "more-itertools",
+    "multidict",
+    "multitasking",
+    "newsapi-python",
+    "numpy",
+    "openai",
+    "pandas",
+    "pydantic",
+    "pydantic-settings",
+    "PyJWT",
+    "sqlalchemy",
+    "weasyprint",
+    "yfinance",
+    "uvicorn"
+]
 
 [tool.setuptools]
 packages = []
