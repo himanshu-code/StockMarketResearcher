@@ -1,6 +1,7 @@
 from crewai import Agent
 from crewai.tools import tool
-from .GPTLLM import llm
+# from .GPTLLM import llm
+from .llm import llm
 
 from mcp_servers.news_server import get_news, get_sentiment_score
 

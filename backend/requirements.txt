@@ -39,3 +39,6 @@ PyJWT
 sqlalchemy
 weasyprint
 yfinance
+google-genai
+redis
+alembic

@@ -66,7 +66,9 @@ def _build_tasks(rag_context:list[str]) -> tuple[Task, Task, Task]:
             "Return ONLY a single valid JSON object (no markdown, no extra text) with these exact keys: "
             "current_price (float), percentage_change (float), currency (str), "
             "trend (str — one of 'bullish', 'bearish', or 'neutral'), "
-            "high_52w (null), low_52w (null), source (str set to 'yahoo_finance')."
+            "high_52w (float, retrieve from fifty_two_week_high returned by get_stock_price), "
+            "low_52w (float, retrieve from fifty_two_week_low returned by get_stock_price), "
+            "source (str set to 'yahoo_finance')."
         ),
         expected_output=(
             "A single JSON object with keys: current_price, percentage_change, currency, "

@@ -6,7 +6,7 @@ import pandas as pd
 from fastmcp import FastMCP
 from langchain.tools import tool
 from yfinance import Ticker
-
+from utils.cache import redis_cache
 from schema.schemas import (
     BalanceSheetSummary,
     CompanyInfoToolResponse,
@@ -82,27 +82,82 @@ def _statement_value(
 
     return None
 
-
+@redis_cache(ttl_seconds=300)
 def _get_stock_price_impl(ticker: str) -> StockPriceToolResponse:
     """Return the latest stock price and day-over-day percentage change."""
     normalized_ticker = _normalize_ticker(ticker)
     tick = Ticker(normalized_ticker)
-    info = getattr(tick, "info", None) or tick.get_info()
-    last_price = float(info.get("lastPrice") or info.get("currentPrice") or 0.0)
-    previous_close = float(info.get("previousClose") or 0.0)
-    currency = info.get("currency", "USD")
-    percentage_change = (
-        ((last_price - previous_close) / previous_close) * 100
-        if previous_close
-        else 0.0
-    )
+    
+    # Try to calculate 52-week high and low from 1y history
+    try:
+        hist = tick.history(period="1y", auto_adjust=False)
+    except Exception:
+        hist = pd.DataFrame()
+
+    fifty_two_week_high = None
+    fifty_two_week_low = None
+    
+    if not hist.empty:
+        # Calculate from 1-year history
+        if "High" in hist.columns and not hist["High"].empty:
+            fifty_two_week_high = float(hist["High"].max())
+        if "Low" in hist.columns and not hist["Low"].empty:
+            fifty_two_week_low = float(hist["Low"].min())
+            
+        # Get last price and previous close from history if possible
+        if "Close" in hist.columns and not hist["Close"].empty:
+            last_price = float(hist["Close"].iloc[-1])
+            previous_close = float(hist["Close"].iloc[-2]) if len(hist) > 1 else last_price
+            percentage_change = (
+                ((last_price - previous_close) / previous_close) * 100
+                if previous_close
+                else 0.0
+            )
+        else:
+            # Fallback to info
+            info = getattr(tick, "info", None) or tick.get_info()
+            last_price = float(info.get("lastPrice") or info.get("currentPrice") or 0.0)
+            previous_close = float(info.get("previousClose") or 0.0)
+            percentage_change = (
+                ((last_price - previous_close) / previous_close) * 100
+                if previous_close
+                else 0.0
+            )
+    else:
+        # Full fallback to info if history is completely empty
+        info = getattr(tick, "info", None) or tick.get_info()
+        last_price = float(info.get("lastPrice") or info.get("currentPrice") or 0.0)
+        previous_close = float(info.get("previousClose") or 0.0)
+        percentage_change = (
+            ((last_price - previous_close) / previous_close) * 100
+            if previous_close
+            else 0.0
+        )
+        # Try info fallback for 52-week high/low
+        fifty_two_week_high = info.get("fiftyTwoWeekHigh")
+        fifty_two_week_low = info.get("fiftyTwoWeekLow")
+        if fifty_two_week_high is not None:
+            fifty_two_week_high = float(fifty_two_week_high)
+        if fifty_two_week_low is not None:
+            fifty_two_week_low = float(fifty_two_week_low)
+
+    # Get currency
+    currency = "USD"
+    try:
+        info = getattr(tick, "info", None) or tick.get_info()
+        currency = info.get("currency", "USD")
+    except Exception:
+        pass
 
     return StockPriceToolResponse(
         ticker=normalized_ticker,
         current_price=last_price,
         percentage_change=percentage_change,
         currency=currency,
+        fifty_two_week_high=fifty_two_week_high,
+        fifty_two_week_low=fifty_two_week_low,
     )
+
 
 
 @tool
@@ -134,7 +189,7 @@ def get_stock_price(ticker: str) -> StockPriceToolResponse:
 # Maximum number of OHLCV bars returned to stay within LLM token budgets.
 _MAX_OHLCV_BARS = 10
 
-
+@redis_cache(ttl_seconds=300)
 def _get_ohlcv_impl(ticker: str, period: str) -> OHLCVToolResponse:
     """Return the most recent OHLCV bars (up to _MAX_OHLCV_BARS) for the
     requested ticker and period.  Capping the rows prevents 413 token-limit
@@ -192,7 +247,7 @@ def get_ohlcv(ticker: str, period: str) -> OHLCVToolResponse:
     """
     return _get_ohlcv_impl(ticker, period)
 
-
+@redis_cache(ttl_seconds=300)
 def _get_company_info_impl(ticker: str) -> CompanyInfoToolResponse:
     """Return company profile data for the requested ticker."""
     normalized_ticker = _normalize_ticker(ticker)
@@ -233,7 +288,7 @@ def get_company_info(ticker: str) -> CompanyInfoToolResponse:
     """
     return _get_company_info_impl(ticker)
 
-
+@redis_cache(ttl_seconds=300)
 def _get_financials_impl(ticker: str) -> FinancialsToolResponse:
     normalized_ticker = _normalize_ticker(ticker)
     stock = Ticker(normalized_ticker)
