@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     newsapi_key: str = os.getenv("NEWSAPI_KEY","")
     base_url:str = os.getenv("OPENAI_BASE_URL","")
     database_url: str = os.getenv("DATABASE_URL","")
+    redis_url: str = os.getenv("REDIS_URL","")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
 
     model_config = SettingsConfigDict(env_file="../.env", extra="ignore")
 

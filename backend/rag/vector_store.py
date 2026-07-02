@@ -32,6 +32,28 @@ class _OpenAIEmbedder(EmbeddingFunction):
         return [item.embedding for item in response.data]
 
 
+class _GeminiEmbedder(EmbeddingFunction):
+    """Custom embedding function that calls the Gemini API directly."""
+
+    def __init__(self, api_key: str, model: str = "gemini-embedding-001"):
+        from google import genai
+        self._client = genai.Client(api_key=api_key)
+        self._model = model
+
+    def __call__(self, input: Documents) -> Embeddings:  # type: ignore[override]
+        embeddings = []
+        for text in input:
+            res = self._client.models.embed_content(
+                model=self._model,
+                contents=text
+            )
+            if res.embeddings:
+                embeddings.append(res.embeddings[0].values)
+            else:
+                embeddings.append([])
+        return embeddings
+
+
 def _get_collection() -> chromadb.Collection:
     """Lazily initialise the ChromaDB client and collection."""
     global _client, _collection
@@ -43,18 +65,26 @@ def _get_collection() -> chromadb.Collection:
     logger.info("[RAG] Initialising ChromaDB PersistentClient at: %s", _PERSIST_DIR)
     _client = chromadb.PersistentClient(path=str(_PERSIST_DIR))
 
-    api_base = os.getenv("OPENAI_BASE_URL")
-    api_key = os.getenv("OPENAI_API_KEY")
-    logger.info("[RAG] Building embedder | base_url=%s | api_key_set=%s", api_base, bool(api_key))
-    embedding_fn = _OpenAIEmbedder(api_base=api_base, api_key=api_key)
+    provider = settings.llm_provider.lower().strip()
+    if provider == "gemini":
+        gemini_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
+        logger.info("[RAG] Building Gemini embedder")
+        embedding_fn = _GeminiEmbedder(api_key=gemini_key)
+    else:
+        api_base = settings.base_url or os.getenv("OPENAI_BASE_URL")
+        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        logger.info("[RAG] Building OpenAI embedder | base_url=%s | api_key_set=%s", api_base, bool(api_key))
+        embedding_fn = _OpenAIEmbedder(api_base=api_base, api_key=api_key)
 
+    collection_name = f"{_COLLECTION_NAME}_{provider}"
     _collection = _client.get_or_create_collection(
-        name=_COLLECTION_NAME,
+        name=collection_name,
         embedding_function=embedding_fn,
         metadata={"hnsw:space": "cosine"},
     )
-    logger.info("[RAG] ChromaDB collection '%s' ready at %s", _COLLECTION_NAME, _PERSIST_DIR)
+    logger.info("[RAG] ChromaDB collection '%s' ready at %s", collection_name, _PERSIST_DIR)
     return _collection
+
 
 def embed_report(report: str, ticker: str, metadata: dict | None = None) -> str:
     """Store a completed research report as an embedding in ChromaDB."""

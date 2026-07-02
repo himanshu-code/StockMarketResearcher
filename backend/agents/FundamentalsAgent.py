@@ -1,6 +1,7 @@
 from crewai import Agent
 from crewai.tools import tool
-from .GPTLLM import llm
+# from .GPTLLM import llm
+from .llm import llm
 
 from mcp_servers.yahoo_finance_server import get_company_info, get_financials
 
