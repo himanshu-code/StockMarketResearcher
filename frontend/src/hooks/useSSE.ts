@@ -7,7 +7,7 @@ import type {
   SentimentLabel,
   StepStatus,
 } from '../types/api'
-
+import { BASE_URL } from '../api/client';
 const INITIAL_STEPS: AgentStep[] = [
   { key: 'researcher', label: 'Research Agent', status: 'pending' },
   { key: 'critic', label: 'Critic Agent', status: 'pending' },
@@ -61,7 +61,7 @@ export function useSSE(jobId: string | null): SSEState {
     // Close any previous connection
     esRef.current?.close()
 
-    const es = new EventSource(`/research/${jobId}/stream`)
+    const es = new EventSource(`${BASE_URL}/research/${jobId}/stream`)
     esRef.current = es
 
     es.addEventListener('agent_started', () => {
