@@ -6,10 +6,16 @@ from datetime import datetime,timezone
 from typing import Any
 from uuid import uuid4
 from graph.workflow import graph
+from sqlalchemy import select
+from db.database import AsyncSessionLocal
+from db.models import Job
 
 logger = logging.getLogger(__name__)
 
 TERMINAL_STATUSES=["completed","failed"]
+
+_active_queues: dict[str, asyncio.Queue] = {}
+_queues_lock = asyncio.Lock()
 
 _jobs:dict[str,dict[str,Any]]={}
 _jobs_lock=asyncio.Lock()
@@ -35,15 +41,62 @@ def _initial_job(ticker:str,job_id:str)->dict[str,Any]:
     }
 
 async def create_job(ticker:str)->dict[str,Any]:
-    job_id=str(uuid4())
-    job=_initial_job(ticker,job_id)
-    async with _jobs_lock:
-        _jobs[job_id]=job
-    return job
+    job_id = str(uuid4())
+    now = _now()
+    async with AsyncSessionLocal() as db:
+        db_job = Job(
+            job_id=job_id,
+            ticker=ticker.upper().strip(),
+            status="queued",
+            created_at=now,
+            updated_at=now,
+            events=[]
+        )
+        db.add(db_job)
+        await db.commit()
+    
+    async with _queues_lock:
+        _active_queues[job_id] = asyncio.Queue()
+        
+    return {
+        "job_id": job_id,
+        "ticker": ticker.upper().strip(),
+        "status": "queued",
+        "report": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+        "completed_at": None,
+        "events": [],
+        "queue": _active_queues[job_id]
+    }
 
 async def get_job(job_id:str)->dict[str,Any]|None:
-    async with _jobs_lock:
-        return _jobs.get(job_id)
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(Job).where(Job.job_id == job_id))
+        db_job = res.scalar_one_or_none()
+        if not db_job:
+            return None
+            
+        async with _queues_lock:
+            if job_id not in _active_queues:
+                _active_queues[job_id] = asyncio.Queue()
+            queue = _active_queues[job_id]
+            
+        return {
+            "job_id": db_job.job_id,
+            "ticker": db_job.ticker,
+            "status": db_job.status,
+            "report": db_job.report,
+            "error": db_job.error,
+            "created_at": db_job.created_at,
+            "updated_at": db_job.updated_at,
+            "completed_at": db_job.completed_at,
+            "signal": db_job.signal,
+            "confidence": db_job.confidence,
+            "events": db_job.events,
+            "queue": queue
+        }
 
 async def list_reports()->list[dict[str,Any]]:
     async with _jobs_lock:
@@ -56,26 +109,38 @@ async def list_reports()->list[dict[str,Any]]:
 
 
 async def _append_event(job_id:str,event:str,data:dict[str,Any]):
-    async with _jobs_lock:
-        job=_jobs[job_id]
-        job["seq"]+=1
-        record={
-            "seq":job["seq"],
-            "event":event,
-            "data":data,
-            "created_at":_now()
-        }
-        job["events"].append(record)
-        job["updated_at"]=record["created_at"]
-        queue=job["queue"]
-    await queue.put(record)
+    now = _now()
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(Job).where(Job.job_id == job_id))
+        db_job = res.scalar_one_or_none()
+        if db_job:
+            events = list(db_job.events)
+            record = {
+                "seq": len(events) + 1,
+                "event": event,
+                "data": data,
+                "created_at": now.isoformat()
+            }
+            events.append(record)
+            db_job.events = events
+            db_job.updated_at = now
+            await db.commit()
+            
+    async with _queues_lock:
+        queue = _active_queues.get(job_id)
+    if queue:
+        await queue.put(record)
 
 
 async def _update_job(job_id:str,**fields:Any):
-    async with _jobs_lock:
-        job=_jobs[job_id]
-        job.update(fields)
-        job["updated_at"]=_now()
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(Job).where(Job.job_id == job_id))
+        db_job = res.scalar_one_or_none()
+        if db_job:
+            for k, v in fields.items():
+                setattr(db_job, k, v)
+            db_job.updated_at = _now()
+            await db.commit()
 
 async def run_research_job(job_id: str):
     job=await get_job(job_id)

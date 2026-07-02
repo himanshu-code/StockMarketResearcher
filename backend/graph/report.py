@@ -34,20 +34,40 @@ Rules:
     """
 
 def _call_llm(prompt:str)->str:
-    """call OpenAi directly (outside crewAI) for report synthesis"""
-    client=OpenAI(
-        base_url=os.getenv("OPENAI_BASE_URL"),
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
-    response=client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role":"system","content":_REPORT_SYSTEM_PROMPT},
-            {"role":"user","content":prompt}
-        ],
-        temperature=0.2,
-    )
-    return response.choices[0].message.content or ""
+    """call OpenAI or Gemini for report synthesis based on LLM_PROVIDER"""
+    from config.settings import get_settings
+    settings = get_settings()
+    provider = settings.llm_provider.lower().strip()
+    
+    if provider == "gemini":
+        from google import genai
+        from google.genai import types
+        api_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_REPORT_SYSTEM_PROMPT,
+                temperature=0.2,
+            )
+        )
+        return response.text or ""
+    else:
+        client=OpenAI(
+            base_url=settings.base_url or os.getenv("OPENAI_BASE_URL"),
+            api_key=settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        )
+        response=client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role":"system","content":_REPORT_SYSTEM_PROMPT},
+                {"role":"user","content":prompt}
+            ],
+            temperature=0.2,
+        )
+        return response.choices[0].message.content or ""
+
 
 def _extract_signal(report_md:str)->tuple[str,float]:
     """Parse 'Signal: 🟢 Bullish — Confidence: 87%' from the report."""

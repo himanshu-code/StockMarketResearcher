@@ -46,7 +46,10 @@ dependencies = [
     "sqlalchemy",
     "weasyprint",
     "yfinance",
-    "uvicorn"
+    "uvicorn",
+    "google-genai",
+    "redis",
+    "alembic"
 ]
 
 [tool.setuptools]

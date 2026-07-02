@@ -1,6 +1,7 @@
 # pyrefly: ignore [missing-import]
 from crewai import Agent,Task
-from .GPTLLM import llm
+# from .GPTLLM import llm
+from .llm import llm
 
 criticAgent= Agent(
     role="Research Quality Auditor",

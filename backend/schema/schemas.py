@@ -43,6 +43,9 @@ class StockPriceToolResponse(BaseModel):
     current_price: float = Field(..., description="The current price of the stock.")
     percentage_change: float = Field(..., description="The percentage change in the stock price.")
     currency: str = Field(..., description="The currency of the stock price.")
+    fifty_two_week_high:float|None=Field(...,description="The 52 week high of the stock.")
+    fifty_two_week_low:float|None=Field(...,description="The 52 week low of the stock.")
+    
 
 class OHLCVRecord(BaseModel):
     date: datetime = Field(..., description="The date of the record.")

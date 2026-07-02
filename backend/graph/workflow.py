@@ -71,9 +71,9 @@ def critic_node(state: ResearchState) -> dict[str, str]:
     iteration=state["iteration"]
 
     rag_context=state.get("rag_context",[])
-    if iteration>1 and not rag_context:
-        query=f"Contradictions and issues in {ticker} stock analysis"
-        rag_context=retrieve_similar(ticker=ticker,query=query,k=2)
+    # if iteration>1 and not rag_context:
+    #     query=f"Contradictions and issues in {ticker} stock analysis"
+    #     rag_context=retrieve_similar(ticker=ticker,query=query,k=2)
 
     critic_task=build_critic_task(
         ticker=ticker,
@@ -118,27 +118,27 @@ def route_after_critique(state: ResearchState) -> Literal["report", "retry"]:
 
 
 def rag_context_node(state: ResearchState) -> dict:
-    """Query ChromaDB for prior analyses and inject them into ResearchState."""
-    ticker = state["ticker"]
-    query = f"Stock research analyses for {ticker}"
-    try:
-        prior_analyses = retrieve_similar(ticker=ticker, query=query, k=3)
-    except Exception:
-        logger.exception("[RAG] rag_context_node failed for %s — falling back to empty context", ticker)
-        prior_analyses = []
-    return {"rag_context": prior_analyses}
+    """Query ChromaDB for prior analyses and inject them into ResearchState. (RAG DISABLED)"""
+    # ticker = state["ticker"]
+    # query = f"Stock research analyses for {ticker}"
+    # try:
+    #     prior_analyses = retrieve_similar(ticker=ticker, query=query, k=3)
+    # except Exception:
+    #     logger.exception("[RAG] rag_context_node failed for %s — falling back to empty context", ticker)
+    #     prior_analyses = []
+    return {"rag_context": []}
 
 def persist_report_node(state: ResearchState) -> dict:
-    """Store the completed report in ChromaDB for future RAG retrieval."""
-    ticker = state["ticker"]
-    report = state.get("report", "")
-    if report:
-        try:
-            embed_report(report=report, ticker=ticker)
-        except Exception as exc:
-            logger.exception(
-                "[RAG] persist_report_node FAILED for %s — full traceback:", ticker
-            )
+    """Store the completed report in ChromaDB for future RAG retrieval. (RAG DISABLED)"""
+    # ticker = state["ticker"]
+    # report = state.get("report", "")
+    # if report:
+    #     try:
+    #         embed_report(report=report, ticker=ticker)
+    #     except Exception as exc:
+    #         logger.exception(
+    #             "[RAG] persist_report_node FAILED for %s — full traceback:", ticker
+    #         )
     return {}
     
 def build_research_graph():
