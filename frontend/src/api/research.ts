@@ -2,6 +2,7 @@ import type {
   ResearchSubmitResponse,
   ResearchJobResponse,
   ResearchReportItem,
+  OHLCVResponse,
 } from '../types/api'
 import { apiClient } from './client'
 
@@ -38,3 +39,10 @@ export async function exportReport(jobId: string, ticker: string): Promise<void>
   link.parentNode?.removeChild(link)
   window.URL.revokeObjectURL(url)
 }
+
+/** Fetch historical OHLCV data for drawing stock price sparklines. */
+export async function getStockOHLCV(ticker: string, period: string = '1mo'): Promise<OHLCVResponse> {
+  const { data } = await apiClient.get<OHLCVResponse>(`/stock/${ticker.toUpperCase()}/ohlcv?period=${period}`)
+  return data
+}
+

@@ -121,3 +121,18 @@ export interface AgentStep {
   iteration?: number
   message?: string
 }
+
+export interface OHLCVRecord {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export interface OHLCVResponse {
+  ticker: string
+  period: string
+  data: OHLCVRecord[]
+}

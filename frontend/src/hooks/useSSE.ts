@@ -24,6 +24,7 @@ interface SSEState {
   /** Raw market data from the researcher event */
   marketData: ResearcherData['market_data'] | null
   logLines: string[]
+  ticker: string | null
 }
 
 /**
@@ -39,6 +40,7 @@ export function useSSE(jobId: string | null): SSEState {
     sentiment: null,
     marketData: null,
     logLines: [],
+    ticker: null,
   })
 
   const esRef = useRef<EventSource | null>(null)
@@ -61,12 +63,26 @@ export function useSSE(jobId: string | null): SSEState {
     // Close any previous connection
     esRef.current?.close()
 
-    const es = new EventSource(`${BASE_URL}/research/${jobId}/stream`)
+    const streamUrl = BASE_URL.endsWith('/')
+      ? `${BASE_URL}research/${jobId}/stream`
+      : `${BASE_URL}/research/${jobId}/stream`
+    const es = new EventSource(streamUrl)
     esRef.current = es
 
-    es.addEventListener('agent_started', () => {
-      setState(prev => ({ ...prev, jobStatus: 'running' }))
-      appendLog('Analysis started...')
+    es.addEventListener('agent_started', (e: MessageEvent) => {
+      let tickerName = ''
+      try {
+        const data = JSON.parse(e.data)
+        tickerName = data.ticker || ''
+      } catch {
+        // ignore
+      }
+      setState(prev => ({
+        ...prev,
+        jobStatus: 'running',
+        ticker: tickerName || prev.ticker,
+      }))
+      appendLog(tickerName ? `Analysis started for ${tickerName}...` : 'Analysis started...')
       setStep('researcher', 'running')
     })
 
@@ -84,6 +100,7 @@ export function useSSE(jobId: string | null): SSEState {
           ...prev,
           sentiment: data.news_sentiment?.label ?? prev.sentiment,
           marketData: data.market_data ?? prev.marketData,
+          ticker: data.ticker ?? prev.ticker,
         }))
       } catch {
         appendLog('researcher event received')
@@ -121,7 +138,12 @@ export function useSSE(jobId: string | null): SSEState {
       try {
         const data = JSON.parse(e.data)
         setStep('report', 'completed')
-        setState(prev => ({ ...prev, jobStatus: 'completed', report: data.report }))
+        setState(prev => ({
+          ...prev,
+          jobStatus: 'completed',
+          report: data.report,
+          ticker: data.ticker ?? prev.ticker,
+        }))
         appendLog('Report ready ✓')
       } catch {
         appendLog('report_ready event received')

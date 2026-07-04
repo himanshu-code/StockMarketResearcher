@@ -19,8 +19,10 @@ from schema.schemas import (
     ResearchJobResponse,
     ResearchRequest,
     ResearchSubmitResponse,
+    OHLCVToolResponse,
 )
 from utils.pdf import markdown_to_pdf
+from utils.cache import redis_cache
 import asyncio
 
 
@@ -182,4 +184,42 @@ async def get_reports(
         raise HTTPException(
             status_code=503,
             detail="Report history unavailable — database connection failed. Check DATABASE_URL.",
+        )
+
+
+@redis_cache(ttl_seconds=300)
+def _get_full_ohlcv(ticker: str, period: str) -> OHLCVToolResponse:
+    from yfinance import Ticker
+    from schema.schemas import OHLCVRecord
+    normalized_ticker = ticker.strip().upper()
+    tick = Ticker(normalized_ticker)
+    ohlcv_data = tick.history(period=period, auto_adjust=False)
+    
+    records = []
+    for timestamp, row in ohlcv_data.iterrows():
+        records.append(
+            OHLCVRecord(
+                date=timestamp.to_pydatetime() if hasattr(timestamp, "to_pydatetime") else timestamp,
+                open=float(row["Open"]),
+                high=float(row["High"]),
+                low=float(row["Low"]),
+                close=float(row["Close"]),
+                volume=int(row["Volume"]),
+            )
+        )
+        
+    return OHLCVToolResponse(ticker=normalized_ticker, period=period, data=records)
+
+
+@app.get("/stock/{ticker}/ohlcv", response_model=OHLCVToolResponse)
+async def get_stock_ohlcv(ticker: str, period: str = "1mo") -> OHLCVToolResponse:
+    """Fetch 30-day historical OHLCV data for drawing stock price sparklines."""
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _get_full_ohlcv, ticker, period)
+    except Exception as e:
+        logger.exception("[GET /stock/{ticker}/ohlcv] Failed to fetch OHLCV data")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch stock history: {str(e)}",
         )

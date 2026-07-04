@@ -11,9 +11,9 @@ import ReportViewer from '../components/ReportViewer'
 export default function ReportPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const navigate = useNavigate()
-  const { steps, logLines, jobStatus, report, error, sentiment, marketData } = useSSE(jobId ?? null)
+  const { steps, logLines, jobStatus, report, error, sentiment, marketData, ticker: sseTicker } = useSSE(jobId ?? null)
 
-  const ticker = steps[0]?.message?.split(' ')[0] ?? jobId ?? ''
+  const ticker = sseTicker ?? jobId ?? ''
 
   return (
     <Box className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">

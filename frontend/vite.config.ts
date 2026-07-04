@@ -11,6 +11,7 @@ export default defineConfig({
       '/research': 'http://localhost:8000',
       '/reports': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
+      '/stock': 'http://localhost:8000',
     },
   },
 })
