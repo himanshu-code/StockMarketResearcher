@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -12,9 +12,10 @@ import ShareIcon from '@mui/icons-material/Share'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip } from 'recharts'
 import SignalBadge from './SignalBadge'
-import { exportReport } from '../api/research'
-import type { SentimentLabel } from '../types/api'
+import { exportReport, getStockOHLCV } from '../api/research'
+import type { SentimentLabel, OHLCVRecord } from '../types/api'
 import type { ResearcherData } from '../types/api'
 
 interface ReportViewerProps {
@@ -25,35 +26,161 @@ interface ReportViewerProps {
   marketData: ResearcherData['market_data'] | null
 }
 
-// ── Placeholder: Price Sparkline ────────────────────────────────────────────
-function PriceChartPlaceholder() {
+// ── Price Sparkline (Recharts Area Chart) ──────────────────────────────────
+interface PriceSparklineProps {
+  ticker: string
+  percentageChange: number
+}
+
+function PriceSparkline({ ticker, percentageChange }: PriceSparklineProps) {
+  const [data, setData] = useState<OHLCVRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setError(null)
+    getStockOHLCV(ticker, '1mo')
+      .then(res => {
+        if (active) {
+          setData(res.data)
+          setLoading(false)
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load sparkline data:', err)
+        if (active) {
+          setError('Failed to load price chart')
+          setLoading(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [ticker])
+
+  if (loading) {
+    return (
+      <Box className="glass-card p-4 flex flex-col gap-2">
+        <Typography variant="caption" className="text-text-muted uppercase tracking-wider">
+          30-Day Price Chart ({ticker})
+        </Typography>
+        <Skeleton
+          variant="rectangular"
+          height={100}
+          sx={{ borderRadius: '6px', bgcolor: 'rgba(255,255,255,0.04)' }}
+        />
+      </Box>
+    )
+  }
+
+  if (error || data.length === 0) {
+    return (
+      <Box className="glass-card p-4 flex flex-col gap-2 items-center justify-center min-h-[142px]">
+        <Typography variant="caption" className="text-text-muted uppercase tracking-wider self-start">
+          30-Day Price Chart ({ticker})
+        </Typography>
+        <Typography variant="caption" className="text-accent-red opacity-80 mt-2">
+          {error || 'No price history available'}
+        </Typography>
+      </Box>
+    )
+  }
+
+  const isPositive = percentageChange >= 0
+  const chartColor = isPositive ? '#00C805' : '#FF3B30'
+  const gradientId = `sparklineGradient-${ticker}`
+
+  // Format date for tooltip
+  const formatDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr)
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    } catch {
+      return dateStr
+    }
+  }
+
   return (
     <Box className="glass-card p-4 flex flex-col gap-2">
-      <Box className="flex items-center gap-2">
+      <Box className="flex items-center justify-between">
         <Typography variant="caption" className="text-text-muted uppercase tracking-wider">
-          30-Day Price Chart
+          30-Day Price Chart ({ticker})
         </Typography>
-        <Tooltip title="Price chart will be available once the OHLCV data endpoint is wired to the frontend.">
-          <InfoOutlinedIcon sx={{ fontSize: 14, color: '#4B5563', cursor: 'help' }} />
-        </Tooltip>
-        <Box
-          component="span"
-          className="text-xs px-2 py-0.5 rounded-full border border-border text-text-muted ml-1"
-        >
-          Coming Soon
-        </Box>
+        <Typography variant="caption" className="text-text-muted" sx={{ fontSize: '0.75rem' }}>
+          {formatDate(data[0]?.date)} — {formatDate(data[data.length - 1]?.date)}
+        </Typography>
       </Box>
-      <Skeleton
-        variant="rectangular"
-        height={80}
-        sx={{ borderRadius: '6px', bgcolor: 'rgba(255,255,255,0.04)' }}
-      />
-      <Typography variant="caption" className="text-text-muted opacity-50 text-center">
-        OHLCV endpoint not yet connected
-      </Typography>
+      <Box sx={{ width: '100%', height: 100, mt: 1 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={chartColor} stopOpacity={0.25} />
+                <stop offset="95%" stopColor={chartColor} stopOpacity={0.0} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="date" hide />
+            <YAxis domain={['auto', 'auto']} hide />
+            <RechartsTooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const record = payload[0].payload as OHLCVRecord
+                  return (
+                    <Box
+                      className="glass-card"
+                      sx={{
+                        p: 1.5,
+                        bgcolor: 'rgba(21, 25, 33, 0.95)',
+                        border: '1px solid #2D343F',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      <Typography variant="caption" className="text-text-muted" sx={{ display: 'block', fontWeight: 500 }}>
+                        {formatDate(record.date)}
+                      </Typography>
+                      <Box className="flex gap-4 mt-1">
+                        <Box>
+                          <Typography variant="caption" className="text-text-muted" sx={{ display: 'block', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                            Close
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: 'monospace', color: '#E1E2EB' }}>
+                            ${record.close.toFixed(2)}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" className="text-text-muted" sx={{ display: 'block', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                            Volume
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: 'monospace', color: '#BBCBB2' }}>
+                            {record.volume.toLocaleString()}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  )
+                }
+                return null
+              }}
+              cursor={{ stroke: '#2D343F', strokeWidth: 1 }}
+            />
+            <Area
+              type="monotone"
+              dataKey="close"
+              stroke={chartColor}
+              strokeWidth={2}
+              fillOpacity={1}
+              fill={`url(#${gradientId})`}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Box>
     </Box>
   )
 }
+
 
 // ── Market data summary row ─────────────────────────────────────────────────
 function MarketDataRow({ marketData }: { marketData: ResearcherData['market_data'] | null }) {
@@ -172,8 +299,8 @@ export default function ReportViewer({ jobId, ticker, report, sentiment, marketD
         <MarketDataRow marketData={marketData} />
       </Box>
 
-      {/* Price chart placeholder */}
-      <PriceChartPlaceholder />
+      {/* Price chart */}
+      <PriceSparkline ticker={ticker} percentageChange={marketData?.percentage_change ?? 0} />
 
       {/* Report content card */}
       <Box className="glass-card p-5">
