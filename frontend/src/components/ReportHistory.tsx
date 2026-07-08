@@ -1,3 +1,5 @@
+'use client'
+
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -12,7 +14,7 @@ import Tooltip from '@mui/material/Tooltip'
 import IconButton from '@mui/material/IconButton'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import SignalBadge from './SignalBadge'
 import type { ResearchReportItem } from '../types/api'
 
@@ -40,7 +42,7 @@ function formatDate(iso: string) {
 }
 
 export default function ReportHistory({ reports, loading = false }: ReportHistoryProps) {
-  const navigate = useNavigate()
+  const router = useRouter()
 
   const COLUMNS = ['Ticker', 'Signal', 'Status', 'Date Analyzed', 'Actions']
 
@@ -74,7 +76,7 @@ export default function ReportHistory({ reports, loading = false }: ReportHistor
                     No completed reports yet.{' '}
                     <span
                       className="text-accent-blue cursor-pointer hover:underline"
-                      onClick={() => navigate('/')}
+                      onClick={() => router.push('/')}
                     >
                       Start a research →
                     </span>
@@ -132,7 +134,7 @@ export default function ReportHistory({ reports, loading = false }: ReportHistor
                           <Button
                             size="small"
                             startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
-                            onClick={() => navigate(`/report/${report.job_id}`)}
+                            onClick={() => router.push(`/report/${report.job_id}`)}
                             sx={{
                               color: '#3D8BFF',
                               fontSize: '0.75rem',

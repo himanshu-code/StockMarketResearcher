@@ -1,3 +1,5 @@
+'use client'
+
 import Chip from '@mui/material/Chip'
 import Skeleton from '@mui/material/Skeleton'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'

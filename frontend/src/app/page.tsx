@@ -1,12 +1,14 @@
+'use client'
+
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import SearchBar from '../components/SearchBar'
 import { postResearch } from '../api/research'
 
 export default function SearchPage() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [apiError, setApiError] = useState('')
 
@@ -15,9 +17,10 @@ export default function SearchPage() {
     setApiError('')
     try {
       const { job_id } = await postResearch(ticker)
-      navigate(`/report/${job_id}`)
+      router.push(`/report/${job_id}`)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to start research. Is the backend running?'
+      const msg =
+        err instanceof Error ? err.message : 'Failed to start research. Is the backend running?'
       setApiError(msg)
       setLoading(false)
     }

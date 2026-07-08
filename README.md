@@ -6,7 +6,7 @@ Full-stack monorepo for the Stock Market Researcher application.
 
 ```text
 StockMarketResearcher/
-├── frontend/          # React + Vite
+├── frontend/          # React + Next.js (App Router)
 ├── backend/           # FastAPI
 │   ├── agents/
 │   ├── graph/
@@ -68,7 +68,7 @@ npm install
 npm run dev
 ```
 
-The Vite dev server starts at <http://localhost:5173>.
+The Next.js dev server starts at <http://localhost:3000>.
 
 ## Docker Compose
 
