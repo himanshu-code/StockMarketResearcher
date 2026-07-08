@@ -1,17 +1,34 @@
-import { useParams, useNavigate } from 'react-router-dom'
+'use client'
+
+import { useParams, useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import Alert from '@mui/material/Alert'
-import { useSSE } from '../hooks/useSSE'
-import AgentProgressPanel from '../components/AgentProgressPanel'
-import ReportViewer from '../components/ReportViewer'
+import dynamic from 'next/dynamic'
+import { useSSE } from '../../../hooks/useSSE'
+import AgentProgressPanel from '../../../components/AgentProgressPanel'
+
+// Dynamically import ReportViewer with SSR disabled to avoid hydration mismatches
+// caused by Recharts' server-side rendering limitations.
+const ReportViewer = dynamic(() => import('../../../components/ReportViewer'), { ssr: false })
 
 export default function ReportPage() {
-  const { jobId } = useParams<{ jobId: string }>()
-  const navigate = useNavigate()
-  const { steps, logLines, jobStatus, report, error, sentiment, marketData, ticker: sseTicker } = useSSE(jobId ?? null)
+  const params = useParams<{ jobId: string }>()
+  const jobId = params?.jobId
+  const router = useRouter()
+
+  const {
+    steps,
+    logLines,
+    jobStatus,
+    report,
+    error,
+    sentiment,
+    marketData,
+    ticker: sseTicker,
+  } = useSSE(jobId ?? null)
 
   const ticker = sseTicker ?? jobId ?? ''
 
@@ -20,7 +37,7 @@ export default function ReportPage() {
       {/* Back nav */}
       <Button
         startIcon={<ArrowBackIcon />}
-        onClick={() => navigate('/')}
+        onClick={() => router.push('/')}
         size="small"
         sx={{ color: '#BBCBB2', alignSelf: 'flex-start', '&:hover': { color: '#E1E2EB' } }}
       >
@@ -43,11 +60,7 @@ export default function ReportPage() {
 
       {/* Progress panel — show while running or queued */}
       {(jobStatus === 'queued' || jobStatus === 'running' || jobStatus === 'failed') && (
-        <AgentProgressPanel
-          steps={steps}
-          logLines={logLines}
-          ticker={jobId ?? ''}
-        />
+        <AgentProgressPanel steps={steps} logLines={logLines} ticker={jobId ?? ''} />
       )}
 
       {/* Report viewer — show when complete */}

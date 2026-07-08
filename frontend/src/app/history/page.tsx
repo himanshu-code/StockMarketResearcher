@@ -1,5 +1,7 @@
+'use client'
+
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -8,12 +10,12 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import Tooltip from '@mui/material/Tooltip'
 import IconButton from '@mui/material/IconButton'
 import Alert from '@mui/material/Alert'
-import ReportHistory from '../components/ReportHistory'
-import { getReports } from '../api/research'
-import type { ResearchReportItem } from '../types/api'
+import ReportHistory from '../../components/ReportHistory'
+import { getReports } from '../../api/research'
+import type { ResearchReportItem } from '../../types/api'
 
 export default function HistoryPage() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [reports, setReports] = useState<ResearchReportItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -31,7 +33,9 @@ export default function HistoryPage() {
     }
   }
 
-  useEffect(() => { fetchReports() }, [])
+  useEffect(() => {
+    fetchReports()
+  }, [])
 
   return (
     <Box className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
@@ -63,7 +67,7 @@ export default function HistoryPage() {
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => navigate('/')}
+            onClick={() => router.push('/')}
             size="small"
           >
             New Research
