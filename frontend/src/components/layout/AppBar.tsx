@@ -32,6 +32,7 @@ export default function NavAppBar() {
   const navLinks = [
     { label: 'Search', path: '/' },
     { label: 'History', path: '/history' },
+    { label: 'Terms', path: '/terms' },
   ]
 
   return (

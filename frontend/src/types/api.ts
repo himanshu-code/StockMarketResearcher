@@ -98,6 +98,7 @@ export type SSEEventType =
   | 'agent_started'
   | 'researcher'
   | 'critic'
+  | 'critique'  // backward-compat alias for older backend deployments
   | 'report'
   | 'agent_done'
   | 'report_ready'

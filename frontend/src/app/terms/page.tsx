@@ -1,0 +1,243 @@
+import type { Metadata } from 'next'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Divider from '@mui/material/Divider'
+import Link from 'next/link'
+
+export const metadata: Metadata = {
+  title: 'Terms of Service | StockMarketResearcher',
+  description:
+    'Read the Terms of Service for StockMarketResearcher — AI-powered stock analysis. Includes disclaimer that content is not financial advice.',
+}
+
+const LAST_UPDATED = 'July 9, 2026'
+
+interface SectionProps {
+  number: string
+  title: string
+  children: React.ReactNode
+}
+
+function Section({ number, title, children }: SectionProps) {
+  return (
+    <Box component="section" sx={{ mb: 5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, mb: 1.5 }}>
+        <Typography
+          variant="overline"
+          sx={{
+            color: '#00C805',
+            fontWeight: 700,
+            fontSize: '0.7rem',
+            letterSpacing: '0.12em',
+            lineHeight: 1,
+          }}
+        >
+          {number}
+        </Typography>
+        <Typography
+          variant="h6"
+          component="h2"
+          sx={{ fontWeight: 600, color: '#E1E2EB', letterSpacing: '-0.01em' }}
+        >
+          {title}
+        </Typography>
+      </Box>
+      <Box sx={{ pl: 0 }}>{children}</Box>
+    </Box>
+  )
+}
+
+function Para({ children }: { children: React.ReactNode }) {
+  return (
+    <Typography
+      variant="body2"
+      sx={{ color: '#BBCBB2', lineHeight: 1.8, mb: 1.5 }}
+    >
+      {children}
+    </Typography>
+  )
+}
+
+export default function TermsPage() {
+  return (
+    <Box
+      component="main"
+      sx={{
+        minHeight: '100vh',
+        px: { xs: 3, sm: 6, md: 8 },
+        py: { xs: 6, sm: 8 },
+        maxWidth: 820,
+        mx: 'auto',
+      }}
+    >
+      {/* Page header */}
+      <Box sx={{ mb: 6 }}>
+        <Typography
+          variant="overline"
+          sx={{ color: '#00C805', letterSpacing: '0.15em', fontSize: '0.7rem', fontWeight: 700 }}
+        >
+          Legal
+        </Typography>
+        <Typography
+          variant="h3"
+          component="h1"
+          sx={{ fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2, mt: 1, mb: 1.5 }}
+        >
+          Terms of Service
+        </Typography>
+        <Typography variant="body2" sx={{ color: '#BBCBB2' }}>
+          Last updated: {LAST_UPDATED}
+        </Typography>
+      </Box>
+
+      {/* NOT FINANCIAL ADVICE callout */}
+      <Box
+        sx={{
+          background: 'linear-gradient(135deg, rgba(255,59,48,0.08) 0%, rgba(255,59,48,0.04) 100%)',
+          border: '1px solid rgba(255,59,48,0.3)',
+          borderRadius: 2,
+          px: 3,
+          py: 2.5,
+          mb: 6,
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{ color: '#FF3B30', fontWeight: 700, letterSpacing: '0.1em', display: 'block', mb: 0.5 }}
+        >
+          ⚠ IMPORTANT DISCLAIMER
+        </Typography>
+        <Typography variant="body2" sx={{ color: '#E1E2EB', lineHeight: 1.7 }}>
+          StockMarketResearcher provides AI-generated research summaries for{' '}
+          <strong>informational purposes only</strong>. Nothing on this platform constitutes
+          financial advice, investment recommendations, or an offer to buy or sell any security.
+          Always consult a licensed financial professional before making any investment decision.
+        </Typography>
+      </Box>
+
+      <Divider sx={{ borderColor: '#2D343F', mb: 6 }} />
+
+      {/* Sections */}
+      <Section number="01" title="Acceptance of Terms">
+        <Para>
+          By accessing or using StockMarketResearcher ("the Service," "we," "us," or "our"), you
+          agree to be bound by these Terms of Service ("Terms"). If you do not agree to all of these
+          Terms, you must not use the Service.
+        </Para>
+        <Para>
+          We reserve the right to update these Terms at any time. Continued use of the Service after
+          changes are posted constitutes your acceptance of the revised Terms.
+        </Para>
+      </Section>
+
+      <Section number="02" title="Description of Service">
+        <Para>
+          StockMarketResearcher is an AI-powered research platform that uses multi-agent systems
+          (including LangGraph and CrewAI) to aggregate and summarize publicly available market
+          data, company fundamentals, and news sentiment for publicly listed securities.
+        </Para>
+        <Para>
+          The Service is provided for personal, non-commercial research and educational use. You
+          may not use the Service to operate a commercial data product, redistribute AI-generated
+          reports, or circumvent any rate limits or access controls.
+        </Para>
+      </Section>
+
+      <Section number="03" title="Disclaimer of Financial Advice">
+        <Para>
+          All content generated by the Service — including but not limited to research reports,
+          signal summaries, sentiment analyses, price targets, and agent commentary — is produced
+          by automated AI systems and is{' '}
+          <strong style={{ color: '#E1E2EB' }}>
+            not financial, investment, tax, or legal advice
+          </strong>
+          .
+        </Para>
+        <Para>
+          Market data, financials, and news items may be incomplete, delayed, or inaccurate.
+          AI-generated analysis may contain errors, hallucinations, or outdated information.
+          Past performance referenced by the Service is not indicative of future results.
+        </Para>
+        <Para>
+          You are solely responsible for any investment decisions you make based on information
+          obtained from the Service. We are not liable for any losses, damages, or costs arising
+          from your reliance on content provided by the Service.
+        </Para>
+      </Section>
+
+      <Section number="04" title="Intellectual Property">
+        <Para>
+          The StockMarketResearcher name, logo, source code, and UI design are the intellectual
+          property of their respective owners. You may not copy, reproduce, distribute, or create
+          derivative works from any part of the Service without prior written permission.
+        </Para>
+        <Para>
+          AI-generated report content is provided to you under a personal, non-transferable licence
+          for viewing purposes only. You may save reports for personal reference but may not
+          republish or sell them.
+        </Para>
+      </Section>
+
+      <Section number="05" title="Data, Privacy & Cookies">
+        <Para>
+          We use cookies and browser local storage solely for session management and to remember
+          your preferences (such as cookie consent). We do not currently use third-party advertising
+          or tracking cookies.
+        </Para>
+        <Para>
+          Any stock ticker queries you submit may be logged for service improvement and abuse
+          prevention. We do not sell or share your query data with third parties.
+        </Para>
+        <Para>
+          You may clear your browser storage at any time to remove locally stored preferences.
+        </Para>
+      </Section>
+
+      <Section number="06" title="Limitation of Liability">
+        <Para>
+          To the maximum extent permitted by applicable law, the Service is provided "as is" and
+          "as available" without warranties of any kind, express or implied. We make no warranty
+          that the Service will be uninterrupted, error-free, or free from harmful components.
+        </Para>
+        <Para>
+          In no event shall StockMarketResearcher, its operators, contributors, or affiliates be
+          liable for any indirect, incidental, special, consequential, or punitive damages, including
+          without limitation loss of profits, data, or goodwill.
+        </Para>
+      </Section>
+
+      <Section number="07" title="Governing Law">
+        <Para>
+          These Terms shall be governed by and construed in accordance with applicable laws. Any
+          disputes arising from these Terms or your use of the Service shall be resolved through
+          binding arbitration or in a court of competent jurisdiction.
+        </Para>
+      </Section>
+
+      <Section number="08" title="Contact">
+        <Para>
+          If you have any questions about these Terms, please open an issue on the project
+          repository or contact the maintainers through the repository's contact channels.
+        </Para>
+      </Section>
+
+      <Divider sx={{ borderColor: '#2D343F', mb: 4 }} />
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Typography variant="caption" sx={{ color: '#BBCBB2', opacity: 0.6 }}>
+          © {new Date().getFullYear()} StockMarketResearcher. All rights reserved.
+        </Typography>
+        <Link
+          href="/"
+          style={{
+            color: '#00C805',
+            fontSize: '0.75rem',
+            textDecoration: 'none',
+          }}
+        >
+          ← Back to app
+        </Link>
+      </Box>
+    </Box>
+  )
+}

@@ -7,7 +7,8 @@ import type {
   SentimentLabel,
   StepStatus,
 } from '../types/api'
-import { BASE_URL } from '../api/client';
+import { BASE_URL } from '../api/client'
+
 const INITIAL_STEPS: AgentStep[] = [
   { key: 'researcher', label: 'Research Agent', status: 'pending' },
   { key: 'critic', label: 'Critic Agent', status: 'pending' },
@@ -63,13 +64,39 @@ export function useSSE(jobId: string | null): SSEState {
     // Close any previous connection
     esRef.current?.close()
 
-    const streamUrl = BASE_URL.endsWith('/')
-      ? `${BASE_URL}research/${jobId}/stream`
-      : `${BASE_URL}/research/${jobId}/stream`
+    // Bug 1 fix: strip trailing slash so we never produce "//research/…".
+    // When BASE_URL is '/' (default dev), base becomes '' → '/research/{jobId}/stream' ✓
+    // When BASE_URL is a full URL like 'https://api.example.com', it works as-is.
+    const base = BASE_URL.replace(/\/$/, '')
+    const streamUrl = `${base}/research/${jobId}/stream`
+
     const es = new EventSource(streamUrl)
     esRef.current = es
 
+    // Bug 5 fix: connection-timeout guard. If EventSource never opens within 8s,
+    // surface a failed state so the report page can show a retry button instead of
+    // spinning "Connecting to analysis stream…" indefinitely.
+    const connectionTimeout = setTimeout(() => {
+      if (es.readyState !== EventSource.OPEN) {
+        setState(prev =>
+          prev.logLines.length === 0
+            ? {
+                ...prev,
+                error:
+                  'Could not connect to the analysis stream. The backend may be unavailable.',
+                jobStatus: 'failed',
+              }
+            : prev,
+        )
+        es.close()
+      }
+    }, 8_000)
+
+    // Clear the connection timeout as soon as the stream is established
+    es.onopen = () => clearTimeout(connectionTimeout)
+
     es.addEventListener('agent_started', (e: MessageEvent) => {
+      clearTimeout(connectionTimeout)
       let tickerName = ''
       try {
         const data = JSON.parse(e.data)
@@ -107,7 +134,10 @@ export function useSSE(jobId: string | null): SSEState {
       }
     })
 
-    es.addEventListener('critic', (e: MessageEvent) => {
+    // Bug 4 fix: backend now emits "critic" (matches LangGraph node name).
+    // We register both "critic" and "critique" (old name) so this works against
+    // any backend version without requiring a simultaneous redeploy.
+    const handleCriticEvent = (e: MessageEvent) => {
       try {
         const data: CritiqueData = JSON.parse(e.data)
         if (data.approved) {
@@ -127,7 +157,9 @@ export function useSSE(jobId: string | null): SSEState {
       } catch {
         appendLog('critic event received')
       }
-    })
+    }
+    es.addEventListener('critic', handleCriticEvent)    // current backend
+    es.addEventListener('critique', handleCriticEvent)  // backward-compat alias
 
     es.addEventListener('report', () => {
       setStep('report', 'running')
@@ -166,12 +198,19 @@ export function useSSE(jobId: string | null): SSEState {
       es.close()
     })
 
+    // Bug 3 fix: do NOT call es.close() on every onerror — EventSource auto-reconnects
+    // on transient network hiccups. Closing here would permanently kill the stream.
+    // Only log the interruption so the user can see it in the progress panel.
     es.onerror = () => {
-      appendLog('Stream connection lost.')
-      es.close()
+      if (es.readyState === EventSource.CLOSED) {
+        appendLog('Stream connection closed.')
+      } else {
+        appendLog('Stream connection interrupted — reconnecting...')
+      }
     }
 
     return () => {
+      clearTimeout(connectionTimeout)
       es.close()
     }
   }, [jobId, appendLog, setStep])
