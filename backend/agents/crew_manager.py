@@ -2,10 +2,40 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
+import threading
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
 from crewai import Crew, Process, Task
+
+# ---------------------------------------------------------------------------
+# CrewAI fix: concurrent Crew() instantiations in the same process all try to
+# acquire the same portalocker.RedisLock (keyed by CREWAI_STORAGE_DIR) during
+# KickoffTaskOutputsSQLiteStorage.__init__, causing AlreadyLocked crashes.
+#
+# Fix: give every Crew() call its own UUID-based temp directory. We use a
+# threading.Lock so only one thread mutates the env var at a time.
+# ---------------------------------------------------------------------------
+_crew_init_lock = threading.Lock()
+
+
+def _make_crew(**kwargs: Any) -> Crew:
+    """Create a Crew with a per-invocation isolated storage directory.
+
+    Each call gets a fresh UUID-named temp dir, ensuring no two concurrent
+    Crew instantiations share the same Redis lock key.
+    """
+    with _crew_init_lock:
+        unique_dir = os.path.join(
+            tempfile.gettempdir(), f"crewai_{uuid.uuid4().hex}"
+        )
+        os.makedirs(unique_dir, exist_ok=True)
+        os.environ["CREWAI_STORAGE_DIR"] = unique_dir
+        crew = Crew(**kwargs)
+    return crew
 
 from .FundamentalsAgent import fundamentalsAgent
 from .MarketDataAgent import marketDataAgent
@@ -130,7 +160,7 @@ class ResearchCrew:
         # Build fresh tasks every run so output state doesn't leak.
         market_data_task, news_sentiment_task, fundamentals_task = _build_tasks(rag_context)
 
-        crew = Crew(
+        crew = _make_crew(
             agents=[marketDataAgent, newsSentimentAgent, fundamentalsAgent],
             tasks=[market_data_task, news_sentiment_task, fundamentals_task],
             process=Process.sequential,
