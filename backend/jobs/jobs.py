@@ -176,7 +176,7 @@ async def run_research_job(job_id: str):
                     critique_result = node_output.get("critique_result", {})
                     await _append_event(
                         job_id,
-                        "critique",
+                        "critic",  # matches LangGraph node name and frontend listener
                         {
                             "job_id": job_id,
                             "iteration": accumulated.get("iteration", 1),

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Box from '@mui/material/Box'
 import NavAppBar from '../components/layout/AppBar'
+import CookieBanner from '../components/CookieBanner'
 import ThemeRegistry from './ThemeRegistry'
 import '../index.css'
 
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <NavAppBar />
             {/* Offset for fixed AppBar (64px) */}
             <Box sx={{ pt: '64px' }}>{children}</Box>
+            <CookieBanner />
           </Box>
         </ThemeRegistry>
       </body>
