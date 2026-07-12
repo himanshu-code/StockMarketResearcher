@@ -1,20 +1,8 @@
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# Isolate CrewAI's SQLite storage to a per-process temp directory.
-# CrewAI's KickoffTaskOutputsSQLiteStorage acquires a portalocker.RedisLock
-# during Crew() instantiation. With concurrent workers, that lock is already
-# held by another worker → AlreadyLocked crash. Giving each process its own
-# storage dir means they each get their own SQLite file and never contend.
-# This env var must be set BEFORE any crewai modules are imported.
-# ---------------------------------------------------------------------------
+# os and tempfile are still needed elsewhere in this file
 import os
 import tempfile
-
-os.environ.setdefault(
-    "CREWAI_STORAGE_DIR",
-    os.path.join(tempfile.gettempdir(), f"crewai_worker_{os.getpid()}"),
-)
 
 import json
 import logging

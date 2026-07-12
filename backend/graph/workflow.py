@@ -4,10 +4,10 @@ from typing import Literal
 import json
 import logging 
 
-from crewai import Crew,Process
+from crewai import Process
 from langgraph.graph import END, START, StateGraph
 
-from agents.crew_manager import get_research_crew
+from agents.crew_manager import _make_crew, get_research_crew
 from agents.CriticAgent import criticAgent,build_critic_task
 from .state import ResearchState
 from rag.vector_store import embed_report,retrieve_similar
@@ -83,12 +83,12 @@ def critic_node(state: ResearchState) -> dict[str, str]:
         iteration=iteration,
         rag_context=rag_context
         )
-    crew=Crew(
+    crew = _make_crew(
         agents=[criticAgent],
         tasks=[critic_task],
         process=Process.sequential,
         verbose=False,
-        memory=False
+        memory=False,
     )
     try:
         crew.kickoff()
