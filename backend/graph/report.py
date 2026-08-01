@@ -113,6 +113,7 @@ def report_node(state:ResearchState, config: dict = None)->dict:
     ns=state.get("news_sentiment",{})
     fu=state.get("fundamentals",{})
     critique=state.get("critique","No critique available")
+    rag_context=state.get("rag_context",[])
 
     trace_id = (config or {}).get("metadata", {}).get("langfuse_trace_id")
     lf = get_langfuse_client()
@@ -171,10 +172,17 @@ def report_node(state:ResearchState, config: dict = None)->dict:
         error_occurred = True
     signal,confidence=_extract_signal(full_report)
 
+    rag_context_text = "\n\n---\n\n".join(rag_context) if rag_context else ""
+    eval_output = {
+        "signal": signal,
+        "confidence": confidence,
+        "report": full_report,
+        "rag_context": rag_context_text,
+    }
     if error_occurred:
-        span.update(level="ERROR", output={"signal": signal, "confidence": confidence})
+        span.update(level="ERROR", output=eval_output)
     else:
-        span.update(output={"signal": signal, "confidence": confidence})
+        span.update(output=eval_output)
     span.end()
 
     return {
