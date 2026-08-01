@@ -49,7 +49,10 @@ dependencies = [
     "uvicorn",
     "google-genai",
     "redis",
-    "alembic"
+    "alembic",
+    "langfuse",
+    "openinference-instrumentation-google-genai",
+    "litellm"
 ]
 
 [tool.setuptools]

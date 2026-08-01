@@ -12,6 +12,7 @@ from agents.CriticAgent import criticAgent,build_critic_task
 from .state import ResearchState
 from rag.vector_store import embed_report,retrieve_similar
 from .report import report_node
+from langfuse import get_client as _lf_client
 
 MAX_ITERATIONS = 2
 APPROVED = "approved"
@@ -23,6 +24,9 @@ _FALLBACK_CRITIQUE = {
 }
 
 logger=logging.getLogger(__name__)  
+
+def _get_trace_id(config:dict)->str|None:
+    return (config or {}).get("metadata",{}).get("langfuse_trace_id")
 
 def _parse_critique_json(raw: str) -> dict:
     """Extract and parse the JSON critique result from LLM output."""
@@ -46,14 +50,31 @@ def _parse_critique_json(raw: str) -> dict:
         logging.warning("Failed to parse critique JSON: %s", exc)
     return _FALLBACK_CRITIQUE
 
-def researcher_node(state: ResearchState) -> dict:
+def researcher_node(state: ResearchState,config:dict=None) -> dict:
     """Populate research data for the requested ticker using CrewAI agents."""
     ticker = state["ticker"].upper()
     iteration = state.get("iteration", 0) + 1
     rag_context=state.get("rag_context",[])
-
+    trace_id = _get_trace_id(config)
+    lf = _lf_client()
+    span = lf.start_observation(
+        as_type="span",
+        trace_context={"trace_id": trace_id} if trace_id else None,
+        name=f"research/{ticker}/iter-{iteration}",
+        input={"ticker": ticker, "iteration": iteration},
+        metadata={"node": "researcher"}
+    )
     crew = get_research_crew()
-    crew_output = crew.run_research(ticker,rag_context=rag_context)
+    try:
+        crew_output = crew.run_research(ticker,rag_context=rag_context,trace_id=trace_id)
+        span.update(output={"status":"research_complete"})
+        span.end()
+    except Exception as exc:
+        logger.error("researcher_node failed for %s: %s",ticker,exc)
+        span.update(output={"status":"research_failed"})
+        span.end()
+        raise
+
 
     return {
         "ticker": ticker,
@@ -65,10 +86,20 @@ def researcher_node(state: ResearchState) -> dict:
     }
 
 
-def critic_node(state: ResearchState) -> dict[str, str]:
+def critic_node(state: ResearchState,config:dict=None) -> dict[str, str]:
     """Run the critic agent to evaluate research quality"""
     ticker =state["ticker"]
     iteration=state["iteration"]
+    trace_id=_get_trace_id(config)
+
+    lf = _lf_client()
+    span = lf.start_observation(
+        as_type="span",
+        trace_context={"trace_id": trace_id} if trace_id else None,
+        name=f"critic/{ticker}/iter-{iteration}",
+        input={"ticker": ticker, "iteration": iteration, "market_data_keys": list(state.get("market_data", {}).keys())},
+        metadata={"node": "critic"}
+    )
 
     rag_context=state.get("rag_context",[])
     # if iteration>1 and not rag_context:
@@ -98,6 +129,8 @@ def critic_node(state: ResearchState) -> dict[str, str]:
         logging.error('CriticAgent failed for %s:%s',ticker,exec)
         critique_result=_FALLBACK_CRITIQUE
     status="critique_approved" if critique_result["approved"] else "critique_retry"
+    span.update(output={"approved":critique_result["approved"],"status":status,})
+    span.end()
     return {
         "critique":critique_result["critique"],
         "critique_result":critique_result,    

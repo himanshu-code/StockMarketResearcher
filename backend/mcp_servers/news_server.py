@@ -8,7 +8,7 @@ from langchain.tools import tool
 from newsapi import NewsApiClient
 
 from schema.schemas import NewsArticle, NewsToolResponse, SentimentToolResponse
-
+from mcp_servers.yahoo_finance_server import _trace_tool
 mcp = FastMCP("News")
 
 
@@ -90,17 +90,29 @@ def get_news_tool(ticker: str, days: int = 7) -> NewsToolResponse:
 
 
 @mcp.tool
-def get_news(ticker: str, days: int = 7) -> NewsToolResponse:
+def get_news(ticker: str = None, days: int = 7, properties: dict = None) -> NewsToolResponse:
     """Retrieve recent news articles for a given stock ticker symbol.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
         days: Number of days to look back for news (default 7)
+        properties: Nested properties dictionary
         
     Returns:
         NewsToolResponse containing articles and sentiment analysis
     """
-    return _get_news_impl(ticker, days)
+    if properties and isinstance(properties, dict):
+        ticker = properties.get("ticker", ticker)
+        days = properties.get("days", days)
+    if not ticker:
+        raise ValueError("INVALID_TICKER: ticker cannot be empty")
+    return _trace_tool(
+        "get_news",
+        {"ticker": ticker, "days": days},
+        _get_news_impl,
+        ticker,
+        days,
+    )
 
 
 def _get_news_impl(ticker: str, days: int = 7) -> NewsToolResponse:
@@ -140,16 +152,26 @@ def get_sentiment_score_tool(ticker: str) -> SentimentToolResponse:
 
 
 @mcp.tool
-def get_sentiment_score(ticker: str) -> SentimentToolResponse:
+def get_sentiment_score(ticker: str = None, properties: dict = None) -> SentimentToolResponse:
     """Analyze sentiment of recent news articles for a stock ticker.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        properties: Nested properties dictionary
         
     Returns:
         SentimentToolResponse with overall sentiment label and score
     """
-    return _get_sentiment_score_impl(ticker)
+    if properties and isinstance(properties, dict):
+        ticker = properties.get("ticker", ticker)
+    if not ticker:
+        raise ValueError("INVALID_TICKER: ticker cannot be empty")
+    return _trace_tool(
+        "get_sentiment_score",
+        {"ticker": ticker},
+        _get_sentiment_score_impl,
+        ticker,
+    )
 
 
 def _get_sentiment_score_impl(ticker: str) -> SentimentToolResponse:

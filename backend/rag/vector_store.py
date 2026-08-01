@@ -8,7 +8,11 @@ import os
 
 import chromadb
 from chromadb import EmbeddingFunction, Documents, Embeddings
-from openai import OpenAI
+# from openai import OpenAI
+from langfuse.openai import OpenAI
+from openinference.instrumentation.google_genai import GoogleGenAIInstrumentor
+
+GoogleGenAIInstrumentor().instrument()
 
 from config.settings import get_settings
 
@@ -70,6 +74,14 @@ def _get_collection() -> chromadb.Collection:
         gemini_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
         logger.info("[RAG] Building Gemini embedder")
         embedding_fn = _GeminiEmbedder(api_key=gemini_key)
+    elif provider == "mistral":
+        mistral_key = settings.mistral_api_key or os.getenv("MISTRAL_API_KEY")
+        logger.info("[RAG] Building Mistral embedder")
+        embedding_fn = _OpenAIEmbedder(
+            api_base="https://api.mistral.ai/v1",
+            api_key=mistral_key,
+            model="mistral-embed"
+        )
     else:
         api_base = settings.base_url or os.getenv("OPENAI_BASE_URL")
         api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
