@@ -90,7 +90,7 @@ export default function AgentProgressPanel({ steps, logLines, ticker }: AgentPro
 
       <Box className="flex flex-col md:flex-row gap-5">
         {/* Step list */}
-        <Box className="flex flex-col gap-3 min-w-[220px]">
+        <Box className="flex flex-col gap-3 w-full md:w-[380px] flex-shrink-0">
           {steps.map((step, i) => (
             <Box key={step.key} className="flex items-start gap-3">
               {/* Connector line */}
@@ -123,7 +123,7 @@ export default function AgentProgressPanel({ steps, logLines, ticker }: AgentPro
           ))}
         </Box>
 
-        <Divider orientation="vertical" flexItem sx={{ borderColor: '#2D343F' }} />
+        <Divider orientation="vertical" flexItem sx={{ borderColor: '#2D343F', display: { xs: 'none', md: 'block' } }} />
 
         {/* Live log */}
         <Box className="flex-1 flex flex-col gap-2 min-w-0">

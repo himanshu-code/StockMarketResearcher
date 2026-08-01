@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from crewai import Crew, Process, Task
-from langfuse import get_client as _lf_client
 from observability.langfuse_client import set_active_trace_id
 
 
@@ -41,9 +40,11 @@ def _make_crew(**kwargs: Any) -> Crew:
         crew = Crew(**kwargs)
     return crew
 
-from .FundamentalsAgent import fundamentalsAgent
-from .MarketDataAgent import marketDataAgent
-from .NewsSentimentAgent import newsSentimentAgent
+from langfuse import propagate_attributes
+from observability.langfuse_client import get_langfuse_client
+from .FundamentalsAgent import get_fundamentals_agent
+from .MarketDataAgent import get_market_data_agent
+from .NewsSentimentAgent import get_news_sentiment_agent
 
 
 @dataclass
@@ -77,7 +78,12 @@ def _parse_json_output(raw_output: str) -> dict[str, Any] | None:
         return None
 
 
-def _build_tasks(rag_context:list[str]) -> tuple[Task, Task, Task]:
+def _build_tasks(
+    rag_context: list[str],
+    market_data_agent: Any,
+    news_sentiment_agent: Any,
+    fundamentals_agent: Any,
+) -> tuple[Task, Task, Task]:
     """Construct the three research tasks. Tasks are created fresh each call
     so that previous run outputs do not pollute subsequent runs."""
 
@@ -108,7 +114,7 @@ def _build_tasks(rag_context:list[str]) -> tuple[Task, Task, Task]:
             "A single JSON object with keys: current_price, percentage_change, currency, "
             "trend, high_52w, low_52w, source."
         ),
-        agent=marketDataAgent,
+        agent=market_data_agent,
     )
 
     news_sentiment_task = Task(
@@ -126,7 +132,7 @@ def _build_tasks(rag_context:list[str]) -> tuple[Task, Task, Task]:
             "A JSON object with keys: label, score, positive_headlines, "
             "negative_headlines, neutral_headlines, top_headlines, source."
         ),
-        agent=newsSentimentAgent,
+        agent=news_sentiment_agent,
         context=[market_data_task],
     )
 
@@ -147,7 +153,7 @@ def _build_tasks(rag_context:list[str]) -> tuple[Task, Task, Task]:
             "revenue, net_income, total_assets, total_liabilities, total_equity, "
             "currency, fiscal_year, source."
         ),
-        agent=fundamentalsAgent,
+        agent=fundamentals_agent,
         context=[market_data_task],
     )
 
@@ -160,7 +166,7 @@ class ResearchCrew:
 
     def run_research(self, ticker: str,rag_context:list[str]|None=None,trace_id:str|None=None) -> ResearchOutput:
         ticker = ticker.upper()
-        lf=_lf_client()
+        lf = get_langfuse_client()
 
         span = lf.start_observation(
             as_type="span",
@@ -170,24 +176,70 @@ class ResearchCrew:
             metadata={},
         )
 
+        # 1. Fetch prompts from Langfuse
+        fundamentals_p = lf.get_prompt("fundamentals-agent-prompt", label="production")
+        market_data_p = lf.get_prompt("market-data-agent-prompt", label="production")
+        news_sentiment_p = lf.get_prompt("news-sentiment-agent-prompt", label="production")
 
+        # 2. Dynamic Agent Instantiation
+        fundamentals_agent = get_fundamentals_agent(
+            ticker=ticker,
+            goal=fundamentals_p.compile(ticker=ticker),
+            backstory=fundamentals_p.config.get("backstory")
+        )
+        market_data_agent = get_market_data_agent(
+            ticker=ticker,
+            goal=market_data_p.compile(ticker=ticker),
+            backstory=market_data_p.config.get("backstory")
+        )
+        news_sentiment_agent = get_news_sentiment_agent(
+            ticker=ticker,
+            goal=news_sentiment_p.compile(ticker=ticker),
+            backstory=news_sentiment_p.config.get("backstory")
+        )
 
         # Build fresh tasks every run so output state doesn't leak.
-        market_data_task, news_sentiment_task, fundamentals_task = _build_tasks(rag_context)
-
-        crew = _make_crew(
-            agents=[marketDataAgent, newsSentimentAgent, fundamentalsAgent],
-            tasks=[market_data_task, news_sentiment_task, fundamentals_task],
-            process=Process.sequential,
-            verbose=self.verbose,
-            memory=False,
+        market_data_task, news_sentiment_task, fundamentals_task = _build_tasks(
+            rag_context or [],
+            market_data_agent=market_data_agent,
+            news_sentiment_agent=news_sentiment_agent,
+            fundamentals_agent=fundamentals_agent,
         )
 
         if trace_id:
             set_active_trace_id(trace_id)
     
         try:
-            crew.kickoff(inputs={"ticker": ticker})
+            # Sequentially execute separate Crews wrapped under propagate_attributes context manager
+            # Market Data Task
+            md_crew = _make_crew(
+                agents=[market_data_agent],
+                tasks=[market_data_task],
+                verbose=self.verbose,
+                memory=False,
+            )
+            with propagate_attributes(prompt=market_data_p):
+                md_crew.kickoff(inputs={"ticker": ticker})
+
+            # News Sentiment Task
+            ns_crew = _make_crew(
+                agents=[news_sentiment_agent],
+                tasks=[news_sentiment_task],
+                verbose=self.verbose,
+                memory=False,
+            )
+            with propagate_attributes(prompt=news_sentiment_p):
+                ns_crew.kickoff(inputs={"ticker": ticker})
+
+            # Fundamentals Task
+            fu_crew = _make_crew(
+                agents=[fundamentals_agent],
+                tasks=[fundamentals_task],
+                verbose=self.verbose,
+                memory=False,
+            )
+            with propagate_attributes(prompt=fundamentals_p):
+                fu_crew.kickoff(inputs={"ticker": ticker})
         except Exception as exc:
             span.update(
                 level="ERROR",

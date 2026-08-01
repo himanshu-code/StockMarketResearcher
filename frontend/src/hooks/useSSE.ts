@@ -145,7 +145,7 @@ export function useSSE(jobId: string | null): SSEState {
           setStep('report', 'running')
           appendLog(`Critic approved research (iteration ${data.iteration})`)
         } else {
-          setStep('critic', 'completed', {
+          setStep('critic', 'pending', {
             message: `Retry needed — ${data.missing?.join(', ') || 'unspecified'}`,
           })
           // Reset researcher for retry

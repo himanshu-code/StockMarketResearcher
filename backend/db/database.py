@@ -27,7 +27,13 @@ elif _raw_url.startswith("postgresql://") or _raw_url.startswith("postgres://"):
 else:
     _db_url = _raw_url  # already has driver prefix
 
-engine = create_async_engine(_db_url, echo=False, connect_args=_connect_args)
+engine = create_async_engine(
+    _db_url,
+    echo=False,
+    connect_args=_connect_args,
+    pool_pre_ping=True,
+    pool_recycle=300
+)
 
 AsyncSessionLocal=async_sessionmaker(engine,expire_on_commit=False)
 
