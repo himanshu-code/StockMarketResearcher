@@ -8,11 +8,12 @@ from crewai import Process
 from langgraph.graph import END, START, StateGraph
 
 from agents.crew_manager import _make_crew, get_research_crew
-from agents.CriticAgent import criticAgent,build_critic_task
+from agents.CriticAgent import get_critic_agent, build_critic_task
 from .state import ResearchState
 from rag.vector_store import embed_report,retrieve_similar
 from .report import report_node
-from langfuse import get_client as _lf_client
+from langfuse import propagate_attributes
+from observability.langfuse_client import get_langfuse_client
 
 MAX_ITERATIONS = 2
 APPROVED = "approved"
@@ -56,7 +57,7 @@ def researcher_node(state: ResearchState,config:dict=None) -> dict:
     iteration = state.get("iteration", 0) + 1
     rag_context=state.get("rag_context",[])
     trace_id = _get_trace_id(config)
-    lf = _lf_client()
+    lf = get_langfuse_client()
     span = lf.start_observation(
         as_type="span",
         trace_context={"trace_id": trace_id} if trace_id else None,
@@ -92,7 +93,7 @@ def critic_node(state: ResearchState,config:dict=None) -> dict[str, str]:
     iteration=state["iteration"]
     trace_id=_get_trace_id(config)
 
-    lf = _lf_client()
+    lf = get_langfuse_client()
     span = lf.start_observation(
         as_type="span",
         trace_context={"trace_id": trace_id} if trace_id else None,
@@ -102,27 +103,37 @@ def critic_node(state: ResearchState,config:dict=None) -> dict[str, str]:
     )
 
     rag_context=state.get("rag_context",[])
-    # if iteration>1 and not rag_context:
-    #     query=f"Contradictions and issues in {ticker} stock analysis"
-    #     rag_context=retrieve_similar(ticker=ticker,query=query,k=2)
 
-    critic_task=build_critic_task(
+    # 1. Fetch Critic prompt from Langfuse
+    critic_prompt = lf.get_prompt("critic-agent-prompt", label="production")
+
+    # 2. Dynamic Agent Instantiation
+    critic_agent = get_critic_agent(
         ticker=ticker,
+        goal=critic_prompt.compile(ticker=ticker),
+        backstory=critic_prompt.config.get("backstory")
+    )
+
+    critic_task = build_critic_task(
+        ticker=ticker,
+        agent=critic_agent,
         market_data=state.get("market_data",{}),
         news_sentiment=state.get("news_sentiment",{}),
         fundamentals=state.get("fundamentals",{}),
         iteration=iteration,
         rag_context=rag_context
-        )
+    )
+
     crew = _make_crew(
-        agents=[criticAgent],
+        agents=[critic_agent],
         tasks=[critic_task],
         process=Process.sequential,
         verbose=False,
         memory=False,
     )
     try:
-        crew.kickoff()
+        with propagate_attributes(prompt=critic_prompt):
+            crew.kickoff()
         raw_output=critic_task.output.raw if critic_task.output else ""
         critique_result=_parse_critique_json(raw_output)
     except Exception as exec:

@@ -2,33 +2,23 @@
 from crewai import Agent,Task
 # from .GPTLLM import llm
 from .llm import llm
+def get_critic_agent(ticker: str, goal: str, backstory: str) -> Agent:
+    return Agent(
+        role="Research Quality Auditor",
+        goal=goal,
+        backstory=backstory,
+        verbose=True,
+        allow_delegation=False,
+        tools=[],
+        llm=llm,
+        memory=False,
+    )
 
-criticAgent= Agent(
-    role="Research Quality Auditor",
-    goal=("Evaluate the quality and completeness of stock research data for {ticker}"
-    "Identify any missing fundamentals,conflicting signals between market data"
-    "and news sentiment,or incomplete data fields"
-    "Return JSON object with keys:"
-    "'approved' (bool) 'critique' (str-human readable summary), "
-    "'missing_fields' (list-any missing data fields) "
-    
-    ),
-    backstory=(
-        "You are a meticulous research quality Auditor at top tier investment bank."
-        "your job is to ensure every research report is complete,internally consistent"
-        "and free of gaps before it reaches a portfolio manager."
-        "You are skilled at spotting contradictions - e.g.,a 'bullish' market trend"
-        "paired with strongly negative sentiment - and flagging absent data like"
-        "missing market cap,null revenues or no headlines"
-    ),
-    verbose =True,
-    allow_delegation=False,
-    tools=[],
-    llm=llm,
-    memory=False
-)
 
-def build_critic_task(ticker:str,market_data:dict,news_sentiment:dict,fundamentals:dict,iteration:int,rag_context:list[str]|None =None)->Task:
+
+
+
+def build_critic_task(ticker:str,agent:Agent,market_data:dict,news_sentiment:dict,fundamentals:dict,iteration:int,rag_context:list[str]|None =None)->Task:
     rag_block=""
     if rag_context:
         joined="\n\n--\n\n".join(rag_context)
@@ -56,5 +46,5 @@ def build_critic_task(ticker:str,market_data:dict,news_sentiment:dict,fundamenta
         ),
         expected_output=('A JSON object {"approved":bool,"critique":str,"missing":list[str]}'
         ),
-        agent=criticAgent,
+        agent=agent,
     )
