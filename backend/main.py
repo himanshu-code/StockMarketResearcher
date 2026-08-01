@@ -6,6 +6,7 @@ import tempfile
 
 import json
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
@@ -27,7 +28,10 @@ from schema.schemas import (
 )
 from utils.pdf import markdown_to_pdf
 from utils.cache import redis_cache
-import asyncio
+
+
+
+
 
 
 settings = get_settings()
@@ -40,12 +44,23 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("[DB] Tables created/verified successfully")
+
+        from observability.langfuse_client import get_langfuse_client
+        lf=get_langfuse_client()
+        if lf.auth_check():
+            logger.info("[Langfuse] Auth check passed")
+        else:
+            logger.error("[Langfuse] Auth check failed. Plz check the LANGFUSE_SECRET_KEY"  )
     except Exception:
         logger.exception(
             "[DB] init_db failed — DB features (GET /reports, PDF export) unavailable. "
             "Check DATABASE_URL in .env"
         )
     yield
+    try:
+        get_langfuse_client().flush()
+    except Exception:
+        pass
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

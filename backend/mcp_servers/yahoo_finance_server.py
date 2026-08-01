@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import time
 
 import pandas as pd
 from fastmcp import FastMCP
@@ -15,7 +16,7 @@ from schema.schemas import (
     OHLCVToolResponse,
     StockPriceToolResponse,
 )
-
+from observability.langfuse_client import get_langfuse_client,get_active_trace_id  
 mcp = FastMCP("Yahoo Finance")
 
 _VALID_PERIODS = {
@@ -32,6 +33,31 @@ _VALID_PERIODS = {
     "max",
 }
 
+
+def _trace_tool(tool_name:str,input_data:dict,fn,*args,**kwargs):
+    lf=get_langfuse_client()
+    trace_id=get_active_trace_id()
+    span = lf.start_observation(
+        as_type="span",
+        trace_context={"trace_id": trace_id} if trace_id else None,
+        name=f"tool/{tool_name}",
+        input=input_data,
+        metadata={"source": "yahoo_finance", "type": "tool"}
+    )
+    t0=time.perf_counter()
+    try:
+        result=fn(*args,**kwargs)
+        latency_ms=(time.perf_counter()-t0)*1000
+        span.update(
+            output={"latency_ms":round(latency_ms,1)},
+            metadata={"latency_ms":round(latency_ms,1)}
+        )
+        span.end()
+        return result
+    except Exception as exc:
+        span.update(level="ERROR",status_message=str(exc))
+        span.end()
+        raise
 
 def _normalize_ticker(ticker: str) -> str:
     normalized = ticker.strip().upper()
@@ -174,16 +200,26 @@ def get_stock_price_tool(ticker: str) -> StockPriceToolResponse:
 
 
 @mcp.tool
-def get_stock_price(ticker: str) -> StockPriceToolResponse:
+def get_stock_price(ticker: str = None, properties: dict = None) -> StockPriceToolResponse:
     """Retrieve the latest stock price and day-over-day percentage change.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        properties: Nested properties dictionary
         
     Returns:
         StockPriceToolResponse with current price and percentage change
     """
-    return _get_stock_price_impl(ticker)
+    if properties and isinstance(properties, dict):
+        ticker = properties.get("ticker", ticker)
+    if not ticker:
+        raise ValueError("INVALID_TICKER: ticker cannot be empty")
+    return _trace_tool(
+        "get_stock_price",
+        {"ticker": ticker},
+        _get_stock_price_impl,   # rename existing body to _get_stock_price_impl
+        ticker,
+    )
 
 
 # Maximum number of OHLCV bars returned to stay within LLM token budgets.
@@ -235,17 +271,31 @@ def get_ohlcv_tool(ticker: str, period: str) -> OHLCVToolResponse:
 
 
 @mcp.tool
-def get_ohlcv(ticker: str, period: str) -> OHLCVToolResponse:
+def get_ohlcv(ticker: str = None, period: str = None, properties: dict = None) -> OHLCVToolResponse:
     """Retrieve OHLCV (Open, High, Low, Close, Volume) bars for a stock.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
         period: Time period for data ('1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max')
+        properties: Nested properties dictionary
         
     Returns:
         OHLCVToolResponse with historical price and volume data
     """
-    return _get_ohlcv_impl(ticker, period)
+    if properties and isinstance(properties, dict):
+        ticker = properties.get("ticker", ticker)
+        period = properties.get("period", period)
+    if not ticker:
+        raise ValueError("INVALID_TICKER: ticker cannot be empty")
+    if not period:
+        period = "1mo"
+    return _trace_tool(
+        "get_ohlcv",
+        {"ticker": ticker,"period":period},
+        _get_ohlcv_impl,
+        ticker,
+        period,
+    )
 
 @redis_cache(ttl_seconds=300)
 def _get_company_info_impl(ticker: str) -> CompanyInfoToolResponse:
@@ -277,16 +327,26 @@ def get_company_info_tool(ticker: str) -> CompanyInfoToolResponse:
 
 
 @mcp.tool
-def get_company_info(ticker: str) -> CompanyInfoToolResponse:
+def get_company_info(ticker: str = None, properties: dict = None) -> CompanyInfoToolResponse:
     """Retrieve company profile and information.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        properties: Nested properties dictionary
         
     Returns:
         CompanyInfoToolResponse with company name, description, sector, and industry
     """
-    return _get_company_info_impl(ticker)
+    if properties and isinstance(properties, dict):
+        ticker = properties.get("ticker", ticker)
+    if not ticker:
+        raise ValueError("INVALID_TICKER: ticker cannot be empty")
+    return _trace_tool(
+        "get_company_info",
+        {"ticker": ticker},
+        _get_company_info_impl,
+        ticker,
+    )
 
 @redis_cache(ttl_seconds=300)
 def _get_financials_impl(ticker: str) -> FinancialsToolResponse:
@@ -390,16 +450,26 @@ def get_financials_tool(ticker: str) -> FinancialsToolResponse:
 
 
 @mcp.tool
-def get_financials(ticker: str) -> FinancialsToolResponse:
+def get_financials(ticker: str = None, properties: dict = None) -> FinancialsToolResponse:
     """Retrieve financial statements including income statement and balance sheet.
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        properties: Nested properties dictionary
         
     Returns:
         FinancialsToolResponse with income statement and balance sheet summaries
     """
-    return _get_financials_impl(ticker)
+    if properties and isinstance(properties, dict):
+        ticker = properties.get("ticker", ticker)
+    if not ticker:
+        raise ValueError("INVALID_TICKER: ticker cannot be empty")
+    return _trace_tool(
+        "get_financials",
+        {"ticker": ticker},
+        _get_financials_impl,
+        ticker,
+    )
 
 
 def build_langchain_tools() -> list[Any]:

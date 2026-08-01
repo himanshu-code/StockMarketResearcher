@@ -28,6 +28,7 @@ class ResearchJobResponse(BaseModel):
     completed_at: datetime | None = None
     signal: str | None = None
     confidence: float | None = None
+    langfuse_trace_id:str|None=None
 
 class ResearchReportItem(BaseModel):
     job_id:str
