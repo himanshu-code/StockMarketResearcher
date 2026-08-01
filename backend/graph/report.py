@@ -4,9 +4,9 @@ import logging
 import re
 from datetime import date
 
-# from openai import OpenAI
+from typing import Any
 from langfuse.openai import OpenAI
-from langfuse import get_client as _lf_client
+from observability.langfuse_client import get_langfuse_client
 import os
 
 from .state import ResearchState
@@ -18,27 +18,9 @@ logger=logging.getLogger(__name__)
 
 _signal_map={"bullish": "🟢 Bullish", "neutral": "🟡 Neutral", "bearish": "🔴 Bearish"}
 
-_REPORT_SYSTEM_PROMPT="""\
-    You are a senior equity research analyst. Given structured stock research data, write a \
-polished Markdown investment report with EXACTLY these six sections in order:
-1. ## Executive Summary
-2. ## Price Analysis
-3. ## News Sentiment
-4. ## Fundamentals Snapshot
-5. ## Risk Factors
-6. ## Signal
-Rules:
-- In "## Price Analysis" mention the momentum trend (bullish/bearish/neutral).
-- In "## News Sentiment" include the sentiment score and up to 3 top headlines.
-- In "## Fundamentals Snapshot" include P/E (if available), EPS, revenue, and market cap.
-- In "## Risk Factors" list 2–4 concrete risks derived from the data.
-- In "## Signal" output EXACTLY one line: `Signal: <🟢 Bullish|🟡 Neutral|🔴 Bearish> — Confidence: <0–100>%`
-- After the Signal section add `## Sources` listing the data sources.
-- Do not add any section outside the six above.
-- Write in a professional but concise tone.
-    """
+# System prompt migrated to Langfuse Prompt Registry ('report-system-prompt')
 
-def _call_llm(prompt:str)->str:
+def _call_llm(prompt:str, system_prompt: str, prompt_obj: Any = None, trace_id: str | None = None)->str:
     """call OpenAI or Gemini for report synthesis based on LLM_PROVIDER"""
     from config.settings import get_settings
     settings = get_settings()
@@ -49,14 +31,32 @@ def _call_llm(prompt:str)->str:
         from google.genai import types
         api_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
         client = genai.Client(api_key=api_key)
+        
+        # Manually create a generation observation to link prompt and trace
+        generation = None
+        if prompt_obj:
+            lf = get_langfuse_client()
+            generation = lf.generation(
+                name="report-synthesis-gemini",
+                model="gemini-2.5-flash",
+                input={"user_prompt": prompt, "system_instruction": system_prompt},
+                prompt=prompt_obj,
+                trace_context={"trace_id": trace_id} if trace_id else None,
+            )
+            
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=_REPORT_SYSTEM_PROMPT,
+                system_instruction=system_prompt,
                 temperature=0.2,
             )
         )
+        
+        if generation:
+            generation.update(output=response.text or "")
+            generation.end()
+            
         return response.text or ""
     elif provider == "mistral":
         client = OpenAI(
@@ -66,10 +66,11 @@ def _call_llm(prompt:str)->str:
         response = client.chat.completions.create(
             model="ministral-3b-2512",
             messages=[
-                {"role": "system", "content": _REPORT_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
+            langfuse_prompt=prompt_obj
         )
         return response.choices[0].message.content or ""
     else:
@@ -80,10 +81,11 @@ def _call_llm(prompt:str)->str:
         response=client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
-                {"role":"system","content":_REPORT_SYSTEM_PROMPT},
+                {"role":"system","content":system_prompt},
                 {"role":"user","content":prompt}
             ],
             temperature=0.2,
+            langfuse_prompt=prompt_obj
         )
         return response.choices[0].message.content or ""
 
@@ -113,7 +115,19 @@ def report_node(state:ResearchState, config: dict = None)->dict:
     critique=state.get("critique","No critique available")
 
     trace_id = (config or {}).get("metadata", {}).get("langfuse_trace_id")
-    lf = _lf_client()
+    lf = get_langfuse_client()
+    
+    # 1. Fetch system prompt from Langfuse (with fallback for case mismatch)
+    try:
+        prompt_obj = lf.get_prompt("report-system-prompt", label="production")
+    except Exception:
+        try:
+            prompt_obj = lf.get_prompt("Report-system-prompt", label="production")
+        except Exception as exc:
+            logger.error("Failed to fetch report-system-prompt or Report-system-prompt from Langfuse: %s", exc)
+            raise
+    system_prompt = prompt_obj.compile()
+
     span = lf.start_observation(
         as_type="span",
         trace_context={"trace_id": trace_id} if trace_id else None,
@@ -136,7 +150,7 @@ def report_node(state:ResearchState, config: dict = None)->dict:
     Write the full Markdown report now.
     """ 
     try:
-        report_md = _call_llm(user_prompt)
+        report_md = _call_llm(user_prompt, system_prompt, prompt_obj, trace_id)
         
         # Clean any wrapping markdown code blocks from the LLM response
         report_md = report_md.strip()
