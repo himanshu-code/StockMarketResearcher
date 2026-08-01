@@ -9,6 +9,9 @@ from graph.workflow import graph
 from sqlalchemy import select
 from db.database import AsyncSessionLocal
 from db.models import Job
+from observability.langfuse_client import make_trace
+from langfuse import propagate_attributes
+
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +97,7 @@ async def get_job(job_id:str)->dict[str,Any]|None:
             "completed_at": db_job.completed_at,
             "signal": db_job.signal,
             "confidence": db_job.confidence,
+            "langfuse_trace_id": db_job.langfuse_trace_id,
             "events": db_job.events,
             "queue": queue
         }
@@ -146,7 +150,21 @@ async def run_research_job(job_id: str):
     job=await get_job(job_id)
     if not job:
         return
-    await _update_job(job_id,status="running")
+    ticker=job["ticker"]
+    trace=make_trace(
+        name=f"reasearch-job/{ticker}",
+        ticker=ticker,
+        job_id=job_id,
+        tags=["stck-research",ticker.lower()],
+        metadata={"job_id":job_id},
+    )
+    trace_id=trace.id
+    await _update_job(job_id,status="running",langfuse_trace_id=trace_id)
+    await _append_event(
+        job_id,
+        "trace_created",
+        {"job_id": job_id, "langfuse_trace_id": trace_id},
+    )
     await _append_event(job_id,"agent_started",{"job_id":job_id,"ticker":job["ticker"]})
     initial_state = {
         "ticker": job["ticker"],
@@ -161,42 +179,43 @@ async def run_research_job(job_id: str):
         "rag_context": [],
     }
     try:
-        accumulated=dict(initial_state)
-       
-        async for chunk in graph.astream(initial_state):
-            for node_name, node_output in chunk.items():
-                if node_output is None:
-                    logger.warning(
-                        "[job:%s] Node '%s' returned None — skipping update",
-                        job_id, node_name
-                    )
-                    continue
-                accumulated.update(node_output)
-                if node_name == "critic":
-                    critique_result = node_output.get("critique_result", {})
-                    await _append_event(
-                        job_id,
-                        "critic",  # matches LangGraph node name and frontend listener
-                        {
-                            "job_id": job_id,
-                            "iteration": accumulated.get("iteration", 1),
-                            "approved": critique_result.get("approved"),
-                            "critique": critique_result.get("critique", ""),
-                            "missing": critique_result.get("missing", []),
-                        },
-                    )
-                else:
-                    # Exclude rag_context (large list) from the event payload
-                    event_data = {k: v for k, v in node_output.items() if k != "rag_context"}
-                    await _append_event(
-                        job_id,
-                        node_name,
-                        {
-                            "job_id": job_id,
-                            "iteration": accumulated.get("iteration", 1),
-                            **event_data,
-                        },
-                    )
+        with propagate_attributes(tags=["stck-research", ticker.lower()]):
+            accumulated=dict(initial_state)
+           
+            async for chunk in graph.astream(initial_state, config={"metadata":{"langfuse_trace_id":trace_id}}):
+                for node_name, node_output in chunk.items():
+                    if node_output is None:
+                        logger.warning(
+                            "[job:%s] Node '%s' returned None — skipping update",
+                            job_id, node_name
+                        )
+                        continue
+                    accumulated.update(node_output)
+                    if node_name == "critic":
+                        critique_result = node_output.get("critique_result", {})
+                        await _append_event(
+                            job_id,
+                            "critic",  # matches LangGraph node name and frontend listener
+                            {
+                                "job_id": job_id,
+                                "iteration": accumulated.get("iteration", 1),
+                                "approved": critique_result.get("approved"),
+                                "critique": critique_result.get("critique", ""),
+                                "missing": critique_result.get("missing", []),
+                            },
+                        )
+                    else:
+                        # Exclude rag_context (large list) from the event payload
+                        event_data = {k: v for k, v in node_output.items() if k != "rag_context"}
+                        await _append_event(
+                            job_id,
+                            node_name,
+                            {
+                                "job_id": job_id,
+                                "iteration": accumulated.get("iteration", 1),
+                                **event_data,
+                            },
+                        )
 
         # result =await graph.ainvoke({
         #     "ticker": job["ticker"],
@@ -212,6 +231,21 @@ async def run_research_job(job_id: str):
         report = accumulated.get("report", "")
         signal = accumulated.get("signal", "Neutral")
         confidence = accumulated.get("confidence", 0.5)
+        trace.update(
+            output={
+                "signal":accumulated.get("signal"),
+                "confidence":accumulated.get("confidence"),
+                "iteration":accumulated.get("iteration",1),
+                
+            },
+            metadata={
+                "job_id": job_id,
+                "final_status": "completed",
+                "signal": signal,
+                "confidence": confidence,
+            },
+        )
+        trace.flush()
 
         # Persist to SQL DB
         try:
@@ -232,6 +266,8 @@ async def run_research_job(job_id: str):
         await _update_job(job_id, status="completed", report=report, signal=signal, confidence=confidence, completed_at=_now())
         await _append_event(job_id, "agent_done", {"job_id": job_id, "ticker": job["ticker"]})
         await _append_event(job_id, "report_ready", {"job_id": job_id, "ticker": job["ticker"], "report": report, "signal": signal, "confidence": confidence})
+    
+   
     except Exception as e:
         import traceback
         error_text = str(e)

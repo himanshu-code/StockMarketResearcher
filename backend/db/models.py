@@ -32,3 +32,4 @@ class Job(Base):
     signal: Mapped[str | None] = mapped_column(String(16), nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     events: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+    langfuse_trace_id:Mapped[str|None]=mapped_column(String,nullable=True)

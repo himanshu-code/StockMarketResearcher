@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from crewai import Crew, Process, Task
+from langfuse import get_client as _lf_client
+from observability.langfuse_client import set_active_trace_id
+
+
 
 # ---------------------------------------------------------------------------
 # CrewAI fix: concurrent Crew() instantiations in the same process all try to
@@ -154,8 +158,19 @@ class ResearchCrew:
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
 
-    def run_research(self, ticker: str,rag_context:list[str]|None=None) -> ResearchOutput:
+    def run_research(self, ticker: str,rag_context:list[str]|None=None,trace_id:str|None=None) -> ResearchOutput:
         ticker = ticker.upper()
+        lf=_lf_client()
+
+        span = lf.start_observation(
+            as_type="span",
+            trace_context={"trace_id": trace_id} if trace_id else None,
+            name=f"research-crew/{ticker}",
+            input={"ticker": ticker, "rag_context_len": len(rag_context or [])},
+            metadata={},
+        )
+
+
 
         # Build fresh tasks every run so output state doesn't leak.
         market_data_task, news_sentiment_task, fundamentals_task = _build_tasks(rag_context)
@@ -168,15 +183,32 @@ class ResearchCrew:
             memory=False,
         )
 
+        if trace_id:
+            set_active_trace_id(trace_id)
+    
         try:
             crew.kickoff(inputs={"ticker": ticker})
         except Exception as exc:
+            span.update(
+                level="ERROR",
+                status_message=str(exc),
+                output={"error":str(exc)}
+            )
+            span.end()
             logging.error("ResearchCrew execution failed for %s: %s", ticker, exc)
             return self._default_output(ticker)
 
         market_data = self._parse_task_output(market_data_task)
         news_sentiment = self._parse_task_output(news_sentiment_task)
         fundamentals = self._parse_task_output(fundamentals_task)
+        span.update(
+            output={
+                "market_data":market_data,
+                "news_sentiment_label":news_sentiment.get("label"),
+                "fundamentals_company":fundamentals.get("company_name")
+            }
+        )
+        span.end()
 
         return ResearchOutput(
             ticker=ticker,

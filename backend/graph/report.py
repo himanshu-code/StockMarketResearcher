@@ -4,10 +4,15 @@ import logging
 import re
 from datetime import date
 
-from openai import OpenAI
+# from openai import OpenAI
+from langfuse.openai import OpenAI
+from langfuse import get_client as _lf_client
 import os
 
 from .state import ResearchState
+from openinference.instrumentation.google_genai import GoogleGenAIInstrumentor
+
+GoogleGenAIInstrumentor().instrument()
 
 logger=logging.getLogger(__name__)
 
@@ -53,6 +58,20 @@ def _call_llm(prompt:str)->str:
             )
         )
         return response.text or ""
+    elif provider == "mistral":
+        client = OpenAI(
+            base_url="https://api.mistral.ai/v1",
+            api_key=settings.mistral_api_key or os.getenv("MISTRAL_API_KEY")
+        )
+        response = client.chat.completions.create(
+            model="ministral-3b-2512",
+            messages=[
+                {"role": "system", "content": _REPORT_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+        )
+        return response.choices[0].message.content or ""
     else:
         client=OpenAI(
             base_url=settings.base_url or os.getenv("OPENAI_BASE_URL"),
@@ -85,13 +104,23 @@ def _extract_signal(report_md:str)->tuple[str,float]:
     return "Neutral", 0.5
 
 
-def report_node(state:ResearchState)->dict:
+def report_node(state:ResearchState, config: dict = None)->dict:
     """Synthesis all research state fields into a polished Markdown report via llm"""
     ticker=state["ticker"]
     md=state.get("market_data",{})
     ns=state.get("news_sentiment",{})
     fu=state.get("fundamentals",{})
     critique=state.get("critique","No critique available")
+
+    trace_id = (config or {}).get("metadata", {}).get("langfuse_trace_id")
+    lf = _lf_client()
+    span = lf.start_observation(
+        as_type="span",
+        trace_context={"trace_id": trace_id} if trace_id else None,
+        name=f"report/{ticker}",
+        input={"ticker": ticker},
+        metadata={"node": "report"},
+    )
 
     user_prompt=f"""
     Ticker: {ticker}
@@ -107,13 +136,33 @@ def report_node(state:ResearchState)->dict:
     Write the full Markdown report now.
     """ 
     try:
-        report_md=_call_llm(user_prompt)
+        report_md = _call_llm(user_prompt)
+        
+        # Clean any wrapping markdown code blocks from the LLM response
+        report_md = report_md.strip()
+        if report_md.startswith("```markdown"):
+            report_md = report_md[11:]
+        elif report_md.startswith("```"):
+            report_md = report_md[3:]
+        if report_md.endswith("```"):
+            report_md = report_md[:-3]
+        report_md = report_md.strip()
+
         title = f"# {ticker} Research Report — {date.today().isoformat()}\n\n"
         full_report = title + report_md
+        error_occurred = False
     except Exception:
         logger.exception("[Report_NODE] LLM failed for %s - falling back to template",ticker)
         full_report=_fallback_report(ticker,md,ns,fu,critique)
+        error_occurred = True
     signal,confidence=_extract_signal(full_report)
+
+    if error_occurred:
+        span.update(level="ERROR", output={"signal": signal, "confidence": confidence})
+    else:
+        span.update(output={"signal": signal, "confidence": confidence})
+    span.end()
+
     return {
         "report": full_report,
         "signal": signal,
