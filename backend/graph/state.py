@@ -3,7 +3,7 @@
 from typing import TypedDict
 
 
-class ResearchState(TypedDict):
+class ResearchState(TypedDict, total=False):
     ticker: str
     market_data: dict
     news_sentiment: dict
@@ -12,7 +12,8 @@ class ResearchState(TypedDict):
     report: str
     iteration: int
     status: str
-    critique_result: dict 
-    rag_context:list[str]
-    signal:str
-    confidence:float
+    critique_result: dict
+    rag_context: list[str]
+    signal: str
+    confidence: float
+    llm_provider: str | None  # per-request provider override; None = use env default

@@ -12,11 +12,11 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false)
   const [apiError, setApiError] = useState('')
 
-  const handleSearch = async (ticker: string) => {
+  const handleSearch = async (ticker: string, llmProvider?: string | null) => {
     setLoading(true)
     setApiError('')
     try {
-      const { job_id } = await postResearch(ticker)
+      const { job_id } = await postResearch(ticker, llmProvider)
       router.push(`/report/${job_id}`)
     } catch (err: unknown) {
       const msg =

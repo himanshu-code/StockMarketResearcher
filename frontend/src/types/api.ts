@@ -4,6 +4,14 @@
 
 export interface ResearchRequest {
   ticker: string
+  llm_provider?: string | null
+}
+
+export interface LLMProvider {
+  id: string
+  label: string
+  model: string
+  configured: boolean
 }
 
 export interface ResearchSubmitResponse {

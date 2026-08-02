@@ -1,24 +1,43 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
 import InputAdornment from '@mui/material/InputAdornment'
+import Tooltip from '@mui/material/Tooltip'
 import SearchIcon from '@mui/icons-material/Search'
+import type { LLMProvider } from '../types/api'
+import { getLLMProviders } from '../api/research'
 
 const TRENDING_TICKERS = ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'GOOGL', 'META']
 
 interface SearchBarProps {
-  onSubmit: (ticker: string) => Promise<void>
+  onSubmit: (ticker: string, llmProvider?: string | null) => Promise<void>
   loading?: boolean
 }
 
 export default function SearchBar({ onSubmit, loading = false }: SearchBarProps) {
   const [ticker, setTicker] = useState('')
   const [error, setError] = useState('')
+  const [providers, setProviders] = useState<LLMProvider[]>([])
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
+
+  // Fetch available providers on mount
+  useEffect(() => {
+    getLLMProviders()
+      .then((data) => {
+        setProviders(data)
+        // Auto-select the first configured provider
+        const first = data.find((p) => p.configured)
+        if (first) setSelectedProvider(first.id)
+      })
+      .catch(() => {
+        // Backend unreachable — degrade gracefully, no provider shown
+      })
+  }, [])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -32,7 +51,7 @@ export default function SearchBar({ onSubmit, loading = false }: SearchBarProps)
       return
     }
     setError('')
-    await onSubmit(trimmed)
+    await onSubmit(trimmed, selectedProvider)
   }
 
   return (
@@ -82,6 +101,60 @@ export default function SearchBar({ onSubmit, loading = false }: SearchBarProps)
           )}
         </Button>
       </form>
+
+      {/* LLM provider selector */}
+      {providers.length > 0 && (
+        <Box className="flex flex-col gap-2">
+          <Typography variant="caption" className="text-text-muted">
+            LLM Provider
+          </Typography>
+          <Box className="flex flex-wrap gap-2">
+            {providers.map((p) => {
+              const isSelected = selectedProvider === p.id
+              const isDisabled = !p.configured || loading
+
+              const chip = (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => {
+                    if (!isDisabled) setSelectedProvider(p.id)
+                  }}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    border: `1px solid ${isSelected ? '#00C805' : 'rgba(187,203,178,0.25)'}`,
+                    background: isSelected
+                      ? 'rgba(0,200,5,0.12)'
+                      : 'rgba(255,255,255,0.04)',
+                    color: isDisabled
+                      ? 'rgba(187,203,178,0.3)'
+                      : isSelected
+                      ? '#00C805'
+                      : '#BBCBB2',
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {p.label}
+                </button>
+              )
+
+              return p.configured ? (
+                chip
+              ) : (
+                <Tooltip key={p.id} title="API key not configured in server .env" placement="top">
+                  <span>{chip}</span>
+                </Tooltip>
+              )
+            })}
+          </Box>
+        </Box>
+      )}
 
       {/* Trending tickers */}
       <Box className="flex flex-wrap items-center gap-2">

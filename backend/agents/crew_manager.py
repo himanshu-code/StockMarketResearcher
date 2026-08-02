@@ -42,6 +42,7 @@ def _make_crew(**kwargs: Any) -> Crew:
 
 from langfuse import propagate_attributes
 from observability.langfuse_client import get_langfuse_client
+from .llm import get_llm
 from .FundamentalsAgent import get_fundamentals_agent
 from .MarketDataAgent import get_market_data_agent
 from .NewsSentimentAgent import get_news_sentiment_agent
@@ -164,7 +165,7 @@ class ResearchCrew:
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
 
-    def run_research(self, ticker: str,rag_context:list[str]|None=None,trace_id:str|None=None) -> ResearchOutput:
+    def run_research(self, ticker: str, rag_context: list[str] | None = None, trace_id: str | None = None, llm_provider: str | None = None) -> ResearchOutput:
         ticker = ticker.upper()
         lf = get_langfuse_client()
 
@@ -181,21 +182,27 @@ class ResearchCrew:
         market_data_p = lf.get_prompt("market-data-agent-prompt", label="production")
         news_sentiment_p = lf.get_prompt("news-sentiment-agent-prompt", label="production")
 
+        # Resolve the LLM for this request
+        request_llm = get_llm(llm_provider)
+
         # 2. Dynamic Agent Instantiation
         fundamentals_agent = get_fundamentals_agent(
             ticker=ticker,
             goal=fundamentals_p.compile(ticker=ticker),
-            backstory=fundamentals_p.config.get("backstory")
+            backstory=fundamentals_p.config.get("backstory"),
+            llm=request_llm,
         )
         market_data_agent = get_market_data_agent(
             ticker=ticker,
             goal=market_data_p.compile(ticker=ticker),
-            backstory=market_data_p.config.get("backstory")
+            backstory=market_data_p.config.get("backstory"),
+            llm=request_llm,
         )
         news_sentiment_agent = get_news_sentiment_agent(
             ticker=ticker,
             goal=news_sentiment_p.compile(ticker=ticker),
-            backstory=news_sentiment_p.config.get("backstory")
+            backstory=news_sentiment_p.config.get("backstory"),
+            llm=request_llm,
         )
 
         # Build fresh tasks every run so output state doesn't leak.

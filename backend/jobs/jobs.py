@@ -43,7 +43,7 @@ def _initial_job(ticker:str,job_id:str)->dict[str,Any]:
 
     }
 
-async def create_job(ticker:str)->dict[str,Any]:
+async def create_job(ticker: str, llm_provider: str | None = None) -> dict[str, Any]:
     job_id = str(uuid4())
     now = _now()
     async with AsyncSessionLocal() as db:
@@ -53,7 +53,8 @@ async def create_job(ticker:str)->dict[str,Any]:
             status="queued",
             created_at=now,
             updated_at=now,
-            events=[]
+            events=[],
+            llm_provider=llm_provider,
         )
         db.add(db_job)
         await db.commit()
@@ -71,7 +72,8 @@ async def create_job(ticker:str)->dict[str,Any]:
         "updated_at": now,
         "completed_at": None,
         "events": [],
-        "queue": _active_queues[job_id]
+        "queue": _active_queues[job_id],
+        "llm_provider": llm_provider,
     }
 
 async def get_job(job_id:str)->dict[str,Any]|None:
@@ -99,7 +101,8 @@ async def get_job(job_id:str)->dict[str,Any]|None:
             "confidence": db_job.confidence,
             "langfuse_trace_id": db_job.langfuse_trace_id,
             "events": db_job.events,
-            "queue": queue
+            "queue": queue,
+            "llm_provider": getattr(db_job, "llm_provider", None),
         }
 
 async def list_reports()->list[dict[str,Any]]:
@@ -177,6 +180,7 @@ async def run_research_job(job_id: str):
         "iteration": 0,
         "status": "queued",
         "rag_context": [],
+        "llm_provider": job.get("llm_provider"),
     }
     try:
         with propagate_attributes(tags=["stck-research", ticker.lower()]):

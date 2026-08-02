@@ -1,8 +1,8 @@
 # pyrefly: ignore [missing-import]
-from crewai import Agent,Task
-# from .GPTLLM import llm
-from .llm import llm
-def get_critic_agent(ticker: str, goal: str, backstory: str) -> Agent:
+from crewai import Agent, Task
+from .llm import llm as _default_llm
+
+def get_critic_agent(ticker: str, goal: str, backstory: str, llm=None) -> Agent:
     return Agent(
         role="Research Quality Auditor",
         goal=goal,
@@ -10,7 +10,7 @@ def get_critic_agent(ticker: str, goal: str, backstory: str) -> Agent:
         verbose=True,
         allow_delegation=False,
         tools=[],
-        llm=llm,
+        llm=llm or _default_llm,
         memory=False,
     )
 
