@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 
 from agents.crew_manager import _make_crew, get_research_crew
 from agents.CriticAgent import get_critic_agent, build_critic_task
+from agents.llm import get_llm
 from .state import ResearchState
 from rag.vector_store import embed_report,retrieve_similar
 from .report import report_node
@@ -51,11 +52,12 @@ def _parse_critique_json(raw: str) -> dict:
         logging.warning("Failed to parse critique JSON: %s", exc)
     return _FALLBACK_CRITIQUE
 
-def researcher_node(state: ResearchState,config:dict=None) -> dict:
+def researcher_node(state: ResearchState, config: dict = None) -> dict:
     """Populate research data for the requested ticker using CrewAI agents."""
     ticker = state["ticker"].upper()
     iteration = state.get("iteration", 0) + 1
-    rag_context=state.get("rag_context",[])
+    rag_context = state.get("rag_context", [])
+    llm_provider = state.get("llm_provider")
     trace_id = _get_trace_id(config)
     lf = get_langfuse_client()
     span = lf.start_observation(
@@ -63,16 +65,16 @@ def researcher_node(state: ResearchState,config:dict=None) -> dict:
         trace_context={"trace_id": trace_id} if trace_id else None,
         name=f"research/{ticker}/iter-{iteration}",
         input={"ticker": ticker, "iteration": iteration},
-        metadata={"node": "researcher"}
+        metadata={"node": "researcher", "llm_provider": llm_provider or "env-default"}
     )
     crew = get_research_crew()
     try:
-        crew_output = crew.run_research(ticker,rag_context=rag_context,trace_id=trace_id)
-        span.update(output={"status":"research_complete"})
+        crew_output = crew.run_research(ticker, rag_context=rag_context, trace_id=trace_id, llm_provider=llm_provider)
+        span.update(output={"status": "research_complete"})
         span.end()
     except Exception as exc:
-        logger.error("researcher_node failed for %s: %s",ticker,exc)
-        span.update(output={"status":"research_failed"})
+        logger.error("researcher_node failed for %s: %s", ticker, exc)
+        span.update(output={"status": "research_failed"})
         span.end()
         raise
 
@@ -87,11 +89,12 @@ def researcher_node(state: ResearchState,config:dict=None) -> dict:
     }
 
 
-def critic_node(state: ResearchState,config:dict=None) -> dict[str, str]:
+def critic_node(state: ResearchState, config: dict = None) -> dict[str, str]:
     """Run the critic agent to evaluate research quality"""
-    ticker =state["ticker"]
-    iteration=state["iteration"]
-    trace_id=_get_trace_id(config)
+    ticker = state["ticker"]
+    iteration = state["iteration"]
+    trace_id = _get_trace_id(config)
+    llm_provider = state.get("llm_provider")
 
     lf = get_langfuse_client()
     span = lf.start_observation(
@@ -111,7 +114,8 @@ def critic_node(state: ResearchState,config:dict=None) -> dict[str, str]:
     critic_agent = get_critic_agent(
         ticker=ticker,
         goal=critic_prompt.compile(ticker=ticker),
-        backstory=critic_prompt.config.get("backstory")
+        backstory=critic_prompt.config.get("backstory"),
+        llm=get_llm(llm_provider),
     )
 
     critic_task = build_critic_task(

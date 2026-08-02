@@ -3,12 +3,22 @@ import type {
   ResearchJobResponse,
   ResearchReportItem,
   OHLCVResponse,
+  LLMProvider,
 } from '../types/api'
 import { apiClient } from './client'
 
-/** Start a new research job for the given ticker. */
-export async function postResearch(ticker: string): Promise<ResearchSubmitResponse> {
-  const { data } = await apiClient.post<ResearchSubmitResponse>('/research', { ticker })
+/** Start a new research job for the given ticker, with an optional LLM provider override. */
+export async function postResearch(ticker: string, llmProvider?: string | null): Promise<ResearchSubmitResponse> {
+  const { data } = await apiClient.post<ResearchSubmitResponse>('/research', {
+    ticker,
+    llm_provider: llmProvider ?? null,
+  })
+  return data
+}
+
+/** Fetch the list of available LLM providers and whether they are configured server-side. */
+export async function getLLMProviders(): Promise<LLMProvider[]> {
+  const { data } = await apiClient.get<LLMProvider[]>('/llm-providers')
   return data
 }
 

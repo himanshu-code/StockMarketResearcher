@@ -121,28 +121,90 @@ try:
 except ImportError:
     pass
 
+# Monkeypatch litellm.completion to map reasoning_content to content for reasoning models
+_original_litellm_completion = litellm.completion
+def _patched_litellm_completion(*args, **kwargs):
+    resp = _original_litellm_completion(*args, **kwargs)
+    try:
+        for choice in getattr(resp, "choices", []):
+            msg = getattr(choice, "message", None)
+            if msg and getattr(msg, "content", None) is None:
+                reasoning = getattr(msg, "reasoning_content", None)
+                if reasoning:
+                    msg.content = reasoning
+    except Exception:
+        pass
+    return resp
+litellm.completion = _patched_litellm_completion
+
+
 from crewai import LLM
 from config.settings import get_settings
 settings = get_settings()
-def load_configurable_llm() -> LLM:
-    provider = settings.llm_provider.lower().strip()
-    if provider == "gemini":
-        return LLM(
-            model="gemini/gemini-2.5-flash",
-            api_key=settings.gemini_api_key or os.getenv("GEMINI_API_KEY"),
-            temperature=0.7
-        )
-    elif provider == "mistral":
-        return LLM(
-            model="mistral/ministral-3b-2512",
-            api_key=settings.mistral_api_key or os.getenv("MISTRAL_API_KEY"),
-            temperature=0
-        )
-    else:
-        return LLM(
-            model='openai/gpt-4o-mini',
-            api_base=settings.base_url or os.getenv("OPENAI_BASE_URL"),
-            api_key=settings.openai_api_key or os.getenv("OPENAI_API_KEY"),
-            temperature=0
-        )
+
+_PROVIDER_CONFIGS: dict[str, dict] = {
+    "gemini": {
+        "model": "gemini/gemini-2.5-flash",
+        "api_key_attr": "gemini_api_key",
+        "temperature": 0.7,
+    },
+    "mistral": {
+        "model": "mistral/ministral-3b-2512",
+        "api_key_attr": "mistral_api_key",
+        "temperature": 0,
+    },
+    # DeepSeek hosted via NVIDIA NIM — uses nvidia_nim/ prefix so LiteLLM
+    # sends the full namespaced model ID (deepseek-ai/deepseek-v4-flash) to NIM.
+    "deepseek": {
+        "model": "nvidia_nim/deepseek-ai/deepseek-v4-flash",
+        "api_key_attr": "nvidia_nim_key",
+        "temperature": 0,
+    },
+    # GPT-OSS-20B hosted via NVIDIA NIM — nvidia_nim/ preserves openai/gpt-oss-20b
+    # intact; using openai/ prefix causes LiteLLM to strip it → 404.
+    "openai": {
+        "model": "nvidia_nim/openai/gpt-oss-20b",
+        "api_key_attr": "nvidia_nim_key",
+        "temperature": 0,
+    },
+}
+
+
+def load_configurable_llm(provider: str | None = None) -> LLM:
+    p = (provider or settings.llm_provider).lower().strip()
+    cfg = _PROVIDER_CONFIGS.get(p, _PROVIDER_CONFIGS["openai"])
+
+    kwargs: dict = {
+        "model": cfg["model"],
+        "temperature": cfg["temperature"],
+    }
+
+    # Resolve API key
+    api_key_attr = cfg.get("api_key_attr")
+    if api_key_attr:
+        kwargs["api_key"] = getattr(settings, api_key_attr, None) or os.getenv(api_key_attr.upper(), "")
+
+    # Resolve optional api_base
+    if "api_base" in cfg:
+        kwargs["api_base"] = cfg["api_base"]
+    elif "api_base_attr" in cfg:
+        base = getattr(settings, cfg["api_base_attr"], None) or os.getenv("OPENAI_BASE_URL", "")
+        if base:
+            kwargs["api_base"] = base
+
+    return LLM(**kwargs)
+
+
+# Module-level singleton using the env-configured default
 llm = load_configurable_llm()
+
+
+def get_llm(provider: str | None = None) -> LLM:
+    """Return a per-provider LLM instance.
+
+    Returns the cached module-level singleton when `provider` is None or
+    matches the env-configured default; otherwise builds a fresh instance.
+    """
+    if not provider or provider.lower().strip() == settings.llm_provider.lower().strip():
+        return llm
+    return load_configurable_llm(provider)

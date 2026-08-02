@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field
 
 class ResearchRequest(BaseModel):
     ticker: str = Field(..., description="The stock ticker symbol to research.")
+    llm_provider: str | None = Field(
+        default=None,
+        description="LLM provider to use: 'gemini' | 'mistral' | 'deepseek' | 'openai'. Defaults to server env setting.",
+    )
 
 class ResearchSubmitResponse(BaseModel):
     job_id: str = Field(..., description="The unique identifier for the research job.")

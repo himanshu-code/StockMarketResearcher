@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     mistral_api_key: str = os.getenv("MISTRAL_API_KEY", "")
+    nvidia_nim_key: str = os.getenv("NVIDIA_NIM_KEY", "")
 
     model_config = SettingsConfigDict(env_file="../.env", extra="ignore")
 

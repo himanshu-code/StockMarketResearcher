@@ -86,12 +86,35 @@ def _format_sse(event: dict) -> str:
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
+
+_PROVIDERS = [
+    {"id": "gemini",   "label": "Gemini 2.5 Flash",   "model": "gemini/gemini-2.5-flash",       "key_attr": "gemini_api_key"},
+    {"id": "mistral",  "label": "Mistral 3B",          "model": "mistral/ministral-3b-2512",     "key_attr": "mistral_api_key"},
+    {"id": "deepseek", "label": "DeepSeek V4 Flash",   "model": "deepseek-ai/deepseek-v4-flash", "key_attr": "nvidia_nim_key"},
+    {"id": "openai",   "label": "GPT-OSS-20B",         "model": "openai/gpt-oss-20b",            "key_attr": "nvidia_nim_key"},
+]
+
+
+@app.get("/llm-providers")
+def list_llm_providers() -> list[dict]:
+    """Return available LLM providers and whether they are configured via .env API keys."""
+    result = []
+    for p in _PROVIDERS:
+        key_val = getattr(settings, p["key_attr"], "") or ""
+        result.append({
+            "id": p["id"],
+            "label": p["label"],
+            "model": p["model"],
+            "configured": bool(key_val.strip()),
+        })
+    return result
+
 @app.post("/research", response_model=ResearchSubmitResponse)
 async def start_research(
     request: ResearchRequest,
     background_tasks: BackgroundTasks,
 ) -> ResearchSubmitResponse:
-    job = await create_job(request.ticker)
+    job = await create_job(request.ticker, llm_provider=request.llm_provider)
     background_tasks.add_task(run_research_job, job["job_id"])
     return ResearchSubmitResponse(
         job_id=job["job_id"],
